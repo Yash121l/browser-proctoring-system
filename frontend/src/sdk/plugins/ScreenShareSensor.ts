@@ -14,11 +14,13 @@ export class ScreenShareSensor implements SensorPlugin {
   private userId: string;
   private token: string;
   private pc?: RTCPeerConnection;
+  private onViolation?: (evt: ProctorEvent) => void;
 
-  constructor(opts: { wsUrl?: string; token: string; testId: string; userId: string }) {
+  constructor(opts: { wsUrl?: string; token: string; testId: string; userId: string; onViolation?: (evt: ProctorEvent) => void }) {
     this.testId = opts.testId;
     this.userId = opts.userId;
     this.token = opts.token;
+    this.onViolation = opts.onViolation;
     this.socket = io(opts.wsUrl ?? window.location.origin, {
       path: "/socket.io",
       transports: ["websocket"],
@@ -57,6 +59,14 @@ export class ScreenShareSensor implements SensorPlugin {
       this.pc?.getSenders().forEach((s) => s.track?.stop());
       this.pc?.close();
       this.pc = undefined;
+      // Log admin forced stop as an event for audit
+      this.onViolation?.({
+        type: "admin_forced_stop",
+        testId: this.testId,
+        userId: this.userId,
+        timestamp: new Date().toISOString(),
+        details: { reason: "admin_stop" },
+      });
     });
   }
 
@@ -64,4 +74,3 @@ export class ScreenShareSensor implements SensorPlugin {
   stop() { /* no-op */ }
   destroy() { this.socket.close(); }
 }
-

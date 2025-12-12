@@ -6,7 +6,7 @@
     "tabSwitchDetection": true,
     "cameraMonitoring": true,
     "audioMonitoring": true,
-    "screenRecording": false,
+    "screenRecording": true,
     "faceDetection": true,
     "multipleFaceDetection": true,
     "objectDetection": false
@@ -23,4 +23,3 @@
   "heartbeatIntervalMs": 5000,
   "frameCaptureIntervalMs": 200
 }
-

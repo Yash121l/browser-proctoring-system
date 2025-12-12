@@ -80,6 +80,20 @@ export class ProctorSDK {
     this.socket.on("connect_error", (err) => {
       console.error("[ProctorSDK] WS error", err);
     });
+    // Admin forced stop -> log event and optionally invoke force-submit callback
+    this.socket.on("admin_stop", () => {
+      const evt: ProctorEvent = {
+        type: "admin_forced_stop",
+        testId: this.config.testId,
+        userId: this.config.userId,
+        timestamp: new Date().toISOString(),
+        details: { reason: "admin_stop" },
+      } as ProctorEvent;
+      this.handleViolation(evt).catch(console.error);
+      const cbName = this.config?.callbacks?.onForceSubmit;
+      const cb = cbName && (this.getByPath(cbName) as (() => void) | undefined);
+      try { cb?.(); } catch {}
+    });
 
     // Configure sensors
     this.sensors = [];
@@ -136,6 +150,7 @@ export class ProctorSDK {
           token: this.token!,
           testId: this.config.testId,
           userId: this.config.userId,
+          onViolation: (evt) => this.handleViolation(evt),
         }),
       );
     }
