@@ -1,7 +1,8 @@
 import React from "react";
 import { ProctorSDK } from "./sdk/ProctorSDK";
 import type { ProctorConfig } from "./core/types";
-import AdminPage from "./admin/AdminPage";
+import AdminSessions from "./admin/AdminSessions";
+import QuizBuilder from "./admin/QuizBuilder";
 import Login from "./pages/Login";
 import StudentDashboard from "./pages/StudentDashboard";
 import TakeQuiz from "./pages/TakeQuiz";
@@ -11,14 +12,13 @@ import TakeQuiz from "./pages/TakeQuiz";
  * Logs in to get a JWT, configures ProctorSDK, and starts monitoring.
  */
 export default function App() {
-  const params = new URLSearchParams(window.location.search);
-  const isAdmin = params.get("admin") === "1";
-  if (isAdmin) return <AdminPage />;
   const [sdk, setSdk] = React.useState<ProctorSDK | null>(null);
   const [token, setToken] = React.useState<string | null>(null);
+  const [role, setRole] = React.useState<"student" | "admin" | null>(null);
   const [status, setStatus] = React.useState<string>("idle");
   const [quiz, setQuiz] = React.useState<any | null>(null);
   const [attempt, setAttempt] = React.useState<any | null>(null);
+  const [adminTab, setAdminTab] = React.useState<"sessions" | "builder">("sessions");
 
   React.useEffect(() => {
     // Expose sample callbacks
@@ -30,67 +30,32 @@ export default function App() {
     };
   }, []);
 
-  const login = async () => {
-    const userId = "user_88";
-    const testId = "quiz_101";
-    const res = await fetch("/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ userId, testId }),
-    });
-    if (!res.ok) throw new Error("Login failed");
-    const { token } = await res.json();
-    setToken(token);
-    return { token, userId, testId };
-  };
-
-  const start = async () => {
-    setStatus("starting");
-    const { token, userId, testId } = await login();
-    const cfg: ProctorConfig = {
-      testId,
-      userId,
-      checks: {
-        forceFullScreen: true,
-        tabSwitchDetection: true,
-        cameraMonitoring: true,
-        audioMonitoring: false,
-        screenRecording: false,
-        faceDetection: true,
-        multipleFaceDetection: true,
-        objectDetection: false,
-      },
-      thresholds: { maxTabSwitches: 3, noiseThreshold: 0.2, gazeToleranceSeconds: 5 },
-      callbacks: {
-        onViolation: "window.onViolationHandler",
-        onForceSubmit: "window.onForceSubmitHandler",
-      },
-      heartbeatIntervalMs: 5000,
-      frameCaptureIntervalMs: 200,
-    };
-    const instance = new ProctorSDK(cfg);
-    instance.setToken(token);
-    await instance.init();
-    setSdk(instance);
-    setStatus("running");
-  };
-
-  const stop = async () => {
-    await sdk?.destroy();
-    setSdk(null);
-    setStatus("stopped");
-  };
-
-  if (!token) return <Login onLogin={(t) => setToken(t)} />;
+  if (!token) return <Login onLogin={(t, r) => { setToken(t); setRole(r); }} />;
 
   if (quiz && attempt) {
     return <TakeQuiz token={token} quiz={quiz} attempt={attempt} onSubmitted={() => { setQuiz(null); setAttempt(null); }} />;
   }
 
+  // Admin console with tabs
+  if (role === "admin") {
+    return (
+      <div className="container">
+        <div className="row" style={{ justifyContent: "space-between", marginBottom: 12 }}>
+          <h2 className="heading">Admin Console</h2>
+          <div className="row" style={{ gap: 8 }}>
+            <button className={`btn ${adminTab === 'sessions' ? '' : 'secondary'}`} onClick={() => setAdminTab('sessions')}>Sessions</button>
+            <button className={`btn ${adminTab === 'builder' ? '' : 'secondary'}`} onClick={() => setAdminTab('builder')}>Quiz Builder</button>
+          </div>
+        </div>
+        {adminTab === "sessions" ? <AdminSessions token={token} /> : <QuizBuilder token={token} />}
+      </div>
+    );
+  }
+
+  // Student dashboard
   return (
-    <div style={{ padding: 24 }}>
-      <h2>Student Dashboard</h2>
+    <div className="container">
+      <h2 className="heading">Student Dashboard</h2>
       <StudentDashboard token={token} onStart={(q, a) => { setQuiz(q); setAttempt(a); }} />
     </div>
   );

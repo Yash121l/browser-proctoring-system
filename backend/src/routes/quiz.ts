@@ -20,7 +20,8 @@ function requireUser(req: Request, res: Response, next: NextFunction) {
 
 function requireAdmin(req: Request, res: Response, next: NextFunction) {
   const user = (req as any).user;
-  if (user?.role !== "admin") return res.status(403).json({ error: "forbidden" });
+  // Accept JWT role 'proctor' (admin) for builder endpoints
+  if (user?.role !== "admin" && user?.role !== "proctor") return res.status(403).json({ error: "forbidden" });
   next();
 }
 
@@ -57,6 +58,58 @@ quizRouter.get("/quizzes", requireUser, async (_req: Request, res: Response) => 
   res.json({ quizzes });
 });
 
+// Get single quiz (admin or student)
+quizRouter.get("/quizzes/:id", requireUser, async (req: Request, res: Response) => {
+  const id = Number(req.params.id);
+  const quiz = await prisma.quiz.findUnique({ where: { id }, include: { questions: true } });
+  if (!quiz) return res.status(404).json({ error: "not_found" });
+  res.json({ quiz });
+});
+
+// Update quiz (admin)
+quizRouter.put("/quizzes/:id", requireUser, requireAdmin, async (req: Request, res: Response) => {
+  const id = Number(req.params.id);
+  const { title, description, proctorEnabled, proctorConfig, questions } = req.body || {};
+  const exists = await prisma.quiz.findUnique({ where: { id } });
+  if (!exists) return res.status(404).json({ error: "not_found" });
+  const updated = await prisma.$transaction(async (tx) => {
+    await tx.question.deleteMany({ where: { quizId: id } });
+    const quiz = await tx.quiz.update({
+      where: { id },
+      data: {
+        title: title ?? exists.title,
+        description: description ?? exists.description ?? null,
+        proctorEnabled: proctorEnabled ?? exists.proctorEnabled,
+        proctorConfig: proctorConfig ?? exists.proctorConfig ?? null,
+        questions: questions
+          ? { create: (questions as any[]).map((q, idx) => ({
+              type: q.type,
+              text: q.text,
+              options: q.options ?? null,
+              correctAnswer: q.correctAnswer ?? null,
+              points: q.points ?? 1,
+              order: idx,
+            })) }
+          : undefined,
+      },
+      include: { questions: true },
+    });
+    return quiz;
+  });
+  res.json({ quiz: updated });
+});
+
+// Delete quiz (admin)
+quizRouter.delete("/quizzes/:id", requireUser, requireAdmin, async (req: Request, res: Response) => {
+  const id = Number(req.params.id);
+  await prisma.$transaction([
+    prisma.question.deleteMany({ where: { quizId: id } }),
+    prisma.quizAttempt.deleteMany({ where: { quizId: id } }),
+    prisma.quiz.delete({ where: { id } }),
+  ]);
+  res.json({ ok: true });
+});
+
 // Start attempt (student)
 quizRouter.post("/quizzes/:id/start", requireUser, async (req: Request, res: Response) => {
   const quizId = Number(req.params.id);
@@ -64,7 +117,9 @@ quizRouter.post("/quizzes/:id/start", requireUser, async (req: Request, res: Res
   const quiz = await prisma.quiz.findUnique({ where: { id: quizId } });
   if (!quiz) return res.status(404).json({ error: "not found" });
   const attempt = await prisma.quizAttempt.create({ data: { quizId, userId } });
-  res.json({ attempt, proctor: { enabled: quiz.proctorEnabled, config: quiz.proctorConfig } });
+  // Issue a session token for WS/proctoring with sub=userId and testId=quizId
+  const wsToken = jwt.sign({ sub: String(userId), testId: String(quizId), role: "candidate" }, JWT_SECRET, { expiresIn: "2h" });
+  res.json({ attempt, proctor: { enabled: quiz.proctorEnabled, config: quiz.proctorConfig }, wsToken });
 });
 
 // Submit attempt (student)
@@ -88,4 +143,3 @@ quizRouter.post("/attempts/:id/submit", requireUser, async (req: Request, res: R
   });
   res.json({ attempt: updated });
 });
-

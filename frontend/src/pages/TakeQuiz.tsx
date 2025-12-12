@@ -34,7 +34,9 @@ export default function TakeQuiz({ token, quiz, attempt, onSubmitted }: { token:
       frameCaptureIntervalMs: 200,
     };
     const instance = new ProctorSDK(cfg);
-    instance.setToken(token);
+    // Use per-attempt WS token for correct sub/testId pairing
+    const wsToken = sessionStorage.getItem("candidate_ws_token") || token;
+    instance.setToken(wsToken);
     instance.init().then(() => setSdk(instance));
     return () => { instance.destroy(); };
   }, [quiz, attempt, token]);
@@ -89,4 +91,3 @@ export default function TakeQuiz({ token, quiz, attempt, onSubmitted }: { token:
     </div>
   );
 }
-

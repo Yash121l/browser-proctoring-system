@@ -14,6 +14,8 @@ export default function StudentDashboard({ token, onStart }: { token: string; on
   const start = async (q: any) => {
     const res = await fetch(`/api/quizzes/${q.id}/start`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
     const data = await res.json();
+    // Cache the ws token for SDK to use
+    sessionStorage.setItem("candidate_ws_token", data.wsToken);
     onStart(q, data.attempt);
   };
 
@@ -36,4 +38,3 @@ export default function StudentDashboard({ token, onStart }: { token: string; on
     </div>
   );
 }
-

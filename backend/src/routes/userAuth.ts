@@ -17,8 +17,11 @@ userAuthRouter.post("/user/register", async (req: Request, res: Response) => {
   if (!email || !password) return res.status(400).json({ error: "missing email/password" });
   try {
     const hash = await bcrypt.hash(password, 10);
-    const user = await prisma.user.create({ data: { email, passwordHash: hash, role: role === "admin" ? "admin" : "student" } });
-    const token = jwt.sign({ userId: user.id, role: user.role }, JWT_SECRET, { expiresIn: "8h" });
+    // Map UI role -> token role expected by server sockets/routes
+    const dbRole = role === "admin" ? "admin" : "student";
+    const tokenRole = dbRole === "admin" ? "proctor" : "candidate";
+    const user = await prisma.user.create({ data: { email, passwordHash: hash, role: dbRole as any } });
+    const token = jwt.sign({ userId: user.id, role: tokenRole }, JWT_SECRET, { expiresIn: "8h" });
     res.json({ token, user: { id: user.id, email: user.email, role: user.role } });
   } catch (e: any) {
     if (e?.code === "P2002") return res.status(409).json({ error: "email_exists" });
@@ -38,7 +41,7 @@ userAuthRouter.post("/user/login", async (req: Request, res: Response) => {
   if (!user) return res.status(401).json({ error: "invalid_credentials" });
   const ok = await bcrypt.compare(password, user.passwordHash);
   if (!ok) return res.status(401).json({ error: "invalid_credentials" });
-  const token = jwt.sign({ userId: user.id, role: user.role }, JWT_SECRET, { expiresIn: "8h" });
+  const tokenRole = user.role === "admin" ? "proctor" : "candidate";
+  const token = jwt.sign({ userId: user.id, role: tokenRole }, JWT_SECRET, { expiresIn: "8h" });
   res.json({ token, user: { id: user.id, email: user.email, role: user.role } });
 });
-
