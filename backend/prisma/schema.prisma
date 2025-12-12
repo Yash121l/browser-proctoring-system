@@ -1,0 +1,33 @@
+// Prisma schema for proctoring backend
+// Database: PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model ProctorEvent {
+  id          Int      @id @default(autoincrement())
+  testId      String
+  userId      String
+  type        String
+  payload     Json
+  clientHash  String
+  serverHash  String
+  createdAt   DateTime @default(now())
+}
+
+model AdminAction {
+  id        Int      @id @default(autoincrement())
+  adminId   String
+  action    String
+  testId    String?
+  userId    String?
+  details   Json?
+  createdAt DateTime @default(now())
+}
+

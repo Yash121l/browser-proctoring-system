@@ -1,0 +1,26 @@
+{
+  "testId": "quiz_101",
+  "userId": "user_88",
+  "checks": {
+    "forceFullScreen": true,
+    "tabSwitchDetection": true,
+    "cameraMonitoring": true,
+    "audioMonitoring": true,
+    "screenRecording": false,
+    "faceDetection": true,
+    "multipleFaceDetection": true,
+    "objectDetection": false
+  },
+  "thresholds": {
+    "maxTabSwitches": 3,
+    "noiseThreshold": 0.2,
+    "gazeToleranceSeconds": 5
+  },
+  "callbacks": {
+    "onViolation": "window.onViolationHandler",
+    "onForceSubmit": "window.onForceSubmitHandler"
+  },
+  "heartbeatIntervalMs": 5000,
+  "frameCaptureIntervalMs": 200
+}
+
