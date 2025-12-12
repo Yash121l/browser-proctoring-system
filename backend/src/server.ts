@@ -149,6 +149,7 @@ app.post("/events", requireJWT, async (req: Request, res: Response) => {
         payload: evt as any,
         clientHash,
         serverHash,
+        attemptId: (evt as any).attemptId ?? null,
       },
     });
 
@@ -240,6 +241,7 @@ io.on("connection", (socket) => {
           payload: evt as any,
           clientHash,
           serverHash,
+          attemptId: (evt as any).attemptId ?? null,
         },
       });
       // Broadcast to admins in this session room

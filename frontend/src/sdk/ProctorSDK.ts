@@ -203,6 +203,7 @@ export class ProctorSDK {
     const evt: ProctorEvent = {
       testId: this.config.testId,
       userId: this.config.userId,
+      attemptId: this.config.attemptId,
       type: "heartbeat",
       timestamp: new Date().toISOString(),
       details: { status: "ok" },
@@ -221,6 +222,9 @@ export class ProctorSDK {
     // Patch in test/user in case sensors left blanks
     evt.testId ||= this.config.testId;
     evt.userId ||= this.config.userId;
+    if (this.config.attemptId && evt.attemptId == null) {
+      (evt as any).attemptId = this.config.attemptId;
+    }
     await this.emitEvent(evt);
     // Callback hook
     const cbName = this.config?.callbacks?.onViolation;

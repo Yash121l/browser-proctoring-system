@@ -2,6 +2,9 @@ import React from "react";
 import { ProctorSDK } from "./sdk/ProctorSDK";
 import type { ProctorConfig } from "./core/types";
 import AdminPage from "./admin/AdminPage";
+import Login from "./pages/Login";
+import StudentDashboard from "./pages/StudentDashboard";
+import TakeQuiz from "./pages/TakeQuiz";
 
 /**
  * Demo App
@@ -14,6 +17,8 @@ export default function App() {
   const [sdk, setSdk] = React.useState<ProctorSDK | null>(null);
   const [token, setToken] = React.useState<string | null>(null);
   const [status, setStatus] = React.useState<string>("idle");
+  const [quiz, setQuiz] = React.useState<any | null>(null);
+  const [attempt, setAttempt] = React.useState<any | null>(null);
 
   React.useEffect(() => {
     // Expose sample callbacks
@@ -77,13 +82,16 @@ export default function App() {
     setStatus("stopped");
   };
 
+  if (!token) return <Login onLogin={(t) => setToken(t)} />;
+
+  if (quiz && attempt) {
+    return <TakeQuiz token={token} quiz={quiz} attempt={attempt} onSubmitted={() => { setQuiz(null); setAttempt(null); }} />;
+  }
+
   return (
     <div style={{ padding: 24 }}>
-      <h2>ProctorSDK Demo</h2>
-      <p>Status: {status}</p>
-      {!sdk ? <button onClick={start}>Start Proctoring</button> : <button onClick={stop}>Stop</button>}
-      {token && <p>JWT acquired</p>}
-      <p>Open console to see events and callbacks.</p>
+      <h2>Student Dashboard</h2>
+      <StudentDashboard token={token} onStart={(q, a) => { setQuiz(q); setAttempt(a); }} />
     </div>
   );
 }

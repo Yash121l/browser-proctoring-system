@@ -1,7 +1,6 @@
 import { Router, Request, Response } from "express";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import jwt from "jsonwebtoken";
 import { Claims } from "../types";
 
 export const router = Router();
@@ -10,7 +9,6 @@ const AWS_REGION = process.env.AWS_REGION || "us-east-1";
 const S3_BUCKET = process.env.S3_BUCKET || "my-proctor-evidence";
 const PRESIGN_TTL_SECONDS = Number(process.env.PRESIGN_TTL_SECONDS || 120);
 const CORS_ORIGIN = process.env.CORS_ORIGIN || "http://localhost:5173";
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
 
 const s3 = new S3Client({ region: AWS_REGION });
 
@@ -32,13 +30,9 @@ router.post("/", async (req: Request, res: Response) => {
     if (origin && origin !== CORS_ORIGIN) {
       return res.status(403).json({ error: "origin_not_allowed" });
     }
-
-    // JWT claims already loaded by middleware in server.ts; fallback verify here
-    const hdr = req.headers.authorization || "";
-    const token = hdr.startsWith("Bearer ") ? hdr.slice(7) : undefined;
-    if (!token) return res.status(401).json({ error: "missing token" });
-
-    const claims = jwt.verify(token, JWT_SECRET) as Claims;
+    // Rely on requireJWT middleware (server.ts) to have attached verified claims
+    const claims = (req as any).claims as Claims | undefined;
+    if (!claims) return res.status(401).json({ error: "unauthorized" });
 
     const { contentType, context } = req.body || {};
     if (!contentType || !context?.testId || !context?.userId) {
@@ -67,4 +61,3 @@ router.post("/", async (req: Request, res: Response) => {
     return res.status(500).json({ error: "server_error" });
   }
 });
-

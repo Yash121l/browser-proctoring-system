@@ -14,6 +14,7 @@ export default defineConfig({
       '/auth': 'http://localhost:3000',
       '/presign': 'http://localhost:3000',
       '/events': 'http://localhost:3000',
+      '/api': 'http://localhost:3000',
       '/admin': 'http://localhost:3000',
       '/socket.io': {
         target: 'ws://localhost:3000',
