@@ -30,31 +30,7 @@ export class ScreenShareSensor implements SensorPlugin {
   }
 
   async init() {
-    this.socket.on("admin_view_request", async () => {
-      try {
-        const stream = await (navigator.mediaDevices as any).getDisplayMedia({ video: true, audio: false });
-        this.pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
-        stream.getTracks().forEach((t: MediaStreamTrack) => this.pc!.addTrack(t, stream));
-        this.pc.onicecandidate = (e) => {
-          if (e.candidate) {
-            this.socket.emit("webrtc-ice-candidate", { testId: this.testId, userId: this.userId, candidate: e.candidate });
-          }
-        };
-        const offer = await this.pc.createOffer();
-        await this.pc.setLocalDescription(offer);
-        this.socket.emit("webrtc-offer", { testId: this.testId, userId: this.userId, offer });
-        this.socket.on("webrtc-answer", async (answer: any) => {
-          if (!this.pc) return;
-          await this.pc.setRemoteDescription(answer);
-        });
-        this.socket.on("webrtc-ice-admin", async (candidate: any) => {
-          try { await this.pc?.addIceCandidate(candidate); } catch {}
-        });
-      } catch (e) {
-        // ignored
-      }
-    });
-
+    // handle admin stop globally
     this.socket.on("admin_stop", () => {
       this.pc?.getSenders().forEach((s) => s.track?.stop());
       this.pc?.close();
@@ -67,6 +43,40 @@ export class ScreenShareSensor implements SensorPlugin {
         timestamp: new Date().toISOString(),
         details: { reason: "admin_stop" },
       });
+    });
+
+    // WebRTC admin->candidate relays
+    this.socket.on("webrtc-answer", async (answer: any) => {
+      if (!this.pc) return;
+      try { await this.pc.setRemoteDescription(answer); } catch {}
+    });
+    this.socket.on("webrtc-ice-admin", async (candidate: any) => {
+      try { await this.pc?.addIceCandidate(candidate); } catch {}
+    });
+
+    // start screen share on admin request
+    this.socket.on("admin_view_request", async () => {
+      try {
+        // Close previous PC if exists
+        if (this.pc) {
+          this.pc.getSenders().forEach((s) => s.track?.stop());
+          this.pc.close();
+          this.pc = undefined;
+        }
+        const stream = await (navigator.mediaDevices as any).getDisplayMedia({ video: true, audio: false });
+        this.pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+        stream.getTracks().forEach((t: MediaStreamTrack) => this.pc!.addTrack(t, stream));
+        this.pc.onicecandidate = (e) => {
+          if (e.candidate) {
+            this.socket.emit("webrtc-ice-candidate", { testId: this.testId, userId: this.userId, candidate: e.candidate });
+          }
+        };
+        const offer = await this.pc.createOffer();
+        await this.pc.setLocalDescription(offer);
+        this.socket.emit("webrtc-offer", { testId: this.testId, userId: this.userId, offer });
+      } catch (e) {
+        // user may cancel; ignore
+      }
     });
   }
 

@@ -7,6 +7,8 @@ import rateLimit from "express-rate-limit";
 import { Server as IOServer } from "socket.io";
 import jwt from "jsonwebtoken";
 import { router as presignRouter } from "./routes/presign";
+import { quizRouter } from "./routes/quiz";
+import { userAuthRouter } from "./routes/userAuth";
 import { prisma } from "./prisma";
 import { Claims, ProctorEvent } from "./types";
 
@@ -114,6 +116,8 @@ function requireJWT(req: Request, res: Response, next: NextFunction) {
 
 // Presign route (JWT required)
 app.use("/presign", requireJWT, presignRouter);
+app.use("/api", quizRouter);
+app.use("/auth", userAuthRouter);
 
 // HTTP fallback for event ingestion (optional; primary path is via WS)
 app.post("/events", requireJWT, async (req: Request, res: Response) => {

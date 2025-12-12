@@ -13,11 +13,11 @@ type SessionInfo = { testId: string; userId: string; socketId: string; connected
  */
 export default function AdminPage() {
   const [token, setToken] = React.useState<string | null>(null);
-  const [socket, setSocket] = React.useState<Socket | null>(null);
   const [sessions, setSessions] = React.useState<SessionInfo[]>([]);
   const [selected, setSelected] = React.useState<SessionInfo | null>(null);
   const [events, setEvents] = React.useState<any[]>([]);
-  const [pc, setPc] = React.useState<RTCPeerConnection | null>(null);
+  const socketRef = React.useRef<Socket | null>(null);
+  const pcRef = React.useRef<RTCPeerConnection | null>(null);
   const videoRef = React.useRef<HTMLVideoElement>(null);
 
   const adminLogin = async (adminId: string, secret: string) => {
@@ -30,7 +30,7 @@ export default function AdminPage() {
     const { token } = await res.json();
     setToken(token);
     const s = io(undefined, { auth: { token }, transports: ["websocket"], path: "/socket.io" });
-    setSocket(s);
+    socketRef.current = s;
   };
 
   const refreshSessions = async () => {
@@ -41,6 +41,7 @@ export default function AdminPage() {
   };
 
   const joinSession = async (s: SessionInfo) => {
+    const socket = socketRef.current;
     if (!socket || !token) return;
     setSelected(s);
     socket.emit("admin_join_session", { testId: s.testId, userId: s.userId });
@@ -54,46 +55,61 @@ export default function AdminPage() {
   };
 
   const requestView = () => {
+    const socket = socketRef.current;
     if (!socket || !selected) return;
     socket.emit("admin_view_request", { testId: selected.testId, userId: selected.userId });
   };
 
-  const setupWebRTC = () => {
-    const peer = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
-    peer.ontrack = (e) => {
-      const [stream] = e.streams;
-      if (videoRef.current) videoRef.current.srcObject = stream;
-    };
-    peer.onicecandidate = (e) => {
-      if (e.candidate && selected && socket) {
-        socket.emit("webrtc-ice-admin", { testId: selected.testId, userId: selected.userId, candidate: e.candidate });
-      }
-    };
-    setPc(peer);
-  };
-
   React.useEffect(() => {
+    const socket = socketRef.current;
     if (!socket) return;
-    setupWebRTC();
     const onEvent = (ev: any) => setEvents((prev) => [ev, ...prev]);
     socket.on("event_broadcast", onEvent);
     socket.on("webrtc-offer", async (offer: any) => {
-      if (!pc) return;
-      await pc.setRemoteDescription(offer);
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      if (selected) socket.emit("webrtc-answer", { testId: selected.testId, userId: selected.userId, answer });
+      // Create/replace peer connection lazily on offer
+      try {
+        if (pcRef.current) {
+          pcRef.current.ontrack = null;
+          pcRef.current.onicecandidate = null as any;
+          pcRef.current.getReceivers().forEach((r) => r.track?.stop());
+          pcRef.current.close();
+        }
+        const peer = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+        pcRef.current = peer;
+        peer.ontrack = (e) => {
+          const [stream] = e.streams;
+          if (videoRef.current) videoRef.current.srcObject = stream;
+        };
+        peer.onicecandidate = (e) => {
+          if (e.candidate && selected) {
+            socket.emit("webrtc-ice-admin", { testId: selected.testId, userId: selected.userId, candidate: e.candidate });
+          }
+        };
+        await peer.setRemoteDescription(offer);
+        const answer = await peer.createAnswer();
+        await peer.setLocalDescription(answer);
+        if (selected) socket.emit("webrtc-answer", { testId: selected.testId, userId: selected.userId, answer });
+      } catch (e) {
+        // ignore errors
+      }
     });
     socket.on("webrtc-ice-candidate", async (candidate: any) => {
-      try { await pc?.addIceCandidate(candidate); } catch {}
+      try { await pcRef.current?.addIceCandidate(candidate); } catch {}
     });
     return () => {
       socket.off("event_broadcast", onEvent);
+      socket.off("webrtc-offer");
+      socket.off("webrtc-ice-candidate");
+      if (pcRef.current) {
+        pcRef.current.getReceivers().forEach((r) => r.track?.stop());
+        pcRef.current.close();
+        pcRef.current = null;
+      }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [socket, pc]);
+  }, [selected]);
 
   const forceStop = () => {
+    const socket = socketRef.current;
     if (!socket || !selected) return;
     socket.emit("admin_stop", { testId: selected.testId, userId: selected.userId });
   };
@@ -147,4 +163,3 @@ export default function AdminPage() {
     </div>
   );
 }
-

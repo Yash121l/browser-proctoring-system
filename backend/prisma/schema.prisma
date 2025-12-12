@@ -10,6 +10,72 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum Role {
+  student
+  admin
+}
+
+enum QuestionType {
+  MCQ
+  TRUE_FALSE
+  SHORT_TEXT
+}
+
+enum AttemptStatus {
+  IN_PROGRESS
+  SUBMITTED
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(student)
+  createdAt    DateTime @default(now())
+  attempts     QuizAttempt[]
+  quizzes      Quiz[]   @relation("QuizCreator")
+}
+
+model Quiz {
+  id             Int       @id @default(autoincrement())
+  title          String
+  description    String?
+  proctorEnabled Boolean   @default(true)
+  proctorConfig  Json?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  createdById    Int
+  createdBy      User      @relation("QuizCreator", fields: [createdById], references: [id])
+  questions      Question[]
+  attempts       QuizAttempt[]
+}
+
+model Question {
+  id             Int          @id @default(autoincrement())
+  quizId         Int
+  quiz           Quiz         @relation(fields: [quizId], references: [id])
+  type           QuestionType
+  text           String
+  options        Json?
+  correctAnswer  Json?
+  points         Int          @default(1)
+  order          Int          @default(0)
+}
+
+model QuizAttempt {
+  id           Int           @id @default(autoincrement())
+  quizId       Int
+  quiz         Quiz          @relation(fields: [quizId], references: [id])
+  userId       Int
+  user         User          @relation(fields: [userId], references: [id])
+  status       AttemptStatus @default(IN_PROGRESS)
+  score        Int           @default(0)
+  startedAt    DateTime      @default(now())
+  submittedAt  DateTime?
+  answers      Answer[]
+  events       ProctorEvent[]
+}
+
 model ProctorEvent {
   id          Int      @id @default(autoincrement())
   testId      String
@@ -19,6 +85,8 @@ model ProctorEvent {
   clientHash  String
   serverHash  String
   createdAt   DateTime @default(now())
+  attemptId   Int?
+  attempt     QuizAttempt? @relation(fields: [attemptId], references: [id])
 }
 
 model AdminAction {
@@ -31,3 +99,13 @@ model AdminAction {
   createdAt DateTime @default(now())
 }
 
+model Answer {
+  id             Int      @id @default(autoincrement())
+  attemptId      Int
+  attempt        QuizAttempt @relation(fields: [attemptId], references: [id])
+  questionId     Int
+  question       Question  @relation(fields: [questionId], references: [id])
+  response       Json
+  correct        Boolean?
+  pointsAwarded  Int       @default(0)
+}

@@ -12,6 +12,7 @@ export type ProctorEventType =
 export interface ProctorEvent {
   testId: string;
   userId: string;
+  attemptId?: number;
   type: ProctorEventType;
   timestamp: string;
   details: Record<string, any>;
@@ -23,6 +24,7 @@ export interface ProctorEvent {
 export interface ProctorConfig {
   testId: string;
   userId: string;
+  attemptId?: number;
   checks: {
     forceFullScreen: boolean;
     tabSwitchDetection: boolean;
