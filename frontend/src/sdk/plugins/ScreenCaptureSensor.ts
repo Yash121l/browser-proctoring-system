@@ -1,5 +1,5 @@
 import { ProctorEvent, SensorPlugin } from "../../core/types";
-import { presignAndUpload } from "../../utils/upload";
+import { presignAndUpload, uploadDirect } from "../../utils/upload";
 
 /**
  * ScreenCaptureSensor
@@ -71,14 +71,29 @@ export class ScreenCaptureSensor implements SensorPlugin {
             this.onPreview?.(dataUrl);
           } catch {}
           const blob: Blob = await new Promise((resolve) => this.canvas!.toBlob((b) => resolve(b!), "image/jpeg", 0.8));
-          const { url, key, viewUrl } = await presignAndUpload({
-            token: this.token,
-            apiBaseUrl: this.apiBase,
-            blob,
-            contentType: "image/jpeg",
-            testId: this.testId,
-            userId: this.userId,
-          });
+          let url: string | undefined; let key: string | undefined; let viewUrl: string | undefined;
+          try {
+            const r = await presignAndUpload({
+              token: this.token,
+              apiBaseUrl: this.apiBase,
+              blob,
+              contentType: "image/jpeg",
+              testId: this.testId,
+              userId: this.userId,
+            });
+            url = r.url; key = r.key; viewUrl = r.viewUrl;
+          } catch {
+            // Fallback: direct upload through backend to avoid S3 CORS preflight
+            const r = await uploadDirect({
+              token: this.token,
+              apiBaseUrl: this.apiBase,
+              blob,
+              contentType: "image/jpeg",
+              testId: this.testId,
+              userId: this.userId,
+            });
+            url = r.url; key = r.key; viewUrl = r.url;
+          }
           this.onViolation?.({
             type: "screen_snapshot",
             testId: this.testId,
@@ -104,14 +119,6 @@ export class ScreenCaptureSensor implements SensorPlugin {
     this.stop();
     try {
       this.stream?.getTracks().forEach((t) => t.stop());
-      // Emit stopped event for audit
-      this.onViolation?.({
-        type: "screen_share_stopped",
-        testId: this.testId,
-        userId: this.userId,
-        timestamp: new Date().toISOString(),
-        details: { reason: "destroy" },
-      } as any);
     } catch {}
     this.stream = undefined;
   }

@@ -11,11 +11,14 @@ import { quizRouter } from "./routes/quiz";
 import { userAuthRouter } from "./routes/userAuth";
 import { prisma } from "./prisma";
 import { Claims, ProctorEvent } from "./types";
+import { S3Client, HeadBucketCommand, CreateBucketCommand } from "@aws-sdk/client-s3";
 
 // ENV
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
 const CORS_ORIGIN = process.env.CORS_ORIGIN || "http://localhost:5173";
+const AWS_REGION = process.env.AWS_REGION || "us-east-1";
+const S3_BUCKET = process.env.S3_BUCKET || "my-proctor-evidence";
 
 // App + HTTP server
 const app = express();
@@ -180,10 +183,19 @@ io.use((socket, next) => {
   const token = (socket.handshake.auth as any)?.token as string | undefined;
   if (!token) return next(new Error("missing token"));
   try {
-    const claims = jwt.verify(token, JWT_SECRET) as Claims;
+    const decoded = jwt.verify(token, JWT_SECRET) as any;
+    // Normalize tokens that may have userId/adminId instead of sub
+    const role: Claims["role"] = decoded.role || "candidate";
+    let sub = decoded.sub ?? decoded.userId ?? decoded.adminId;
+    if (!sub) {
+      if (role === "proctor") sub = "admin"; // fallback label
+      else return next(new Error("invalid token claims"));
+    }
+    const testId = decoded.testId ?? (role === "proctor" ? "*" : decoded.testId);
+    const claims: Claims = { sub: String(sub), testId: String(testId || "*"), role };
     (socket as any).claims = claims;
     next();
-  } catch {
+  } catch (e) {
     next(new Error("invalid token"));
   }
 });
@@ -382,3 +394,25 @@ app.get("/admin/events", requireAdmin, async (req: Request, res: Response) => {
 server.listen(PORT, () => {
   console.log(`HTTP listening on :${PORT}`);
 });
+
+// Optional: best-effort ensure S3 bucket exists (logs helpful error if not)
+(async () => {
+  try {
+    if (!S3_BUCKET) return;
+    const s3 = new S3Client({ region: AWS_REGION });
+    await s3.send(new HeadBucketCommand({ Bucket: S3_BUCKET }));
+  } catch (e: any) {
+    console.error(`S3 bucket '${S3_BUCKET}' not found in region ${AWS_REGION}.`);
+    try {
+      const s3 = new S3Client({ region: AWS_REGION });
+      if (AWS_REGION === "us-east-1") {
+        await s3.send(new CreateBucketCommand({ Bucket: S3_BUCKET }));
+      } else {
+        await s3.send(new CreateBucketCommand({ Bucket: S3_BUCKET, CreateBucketConfiguration: { LocationConstraint: AWS_REGION as any } }));
+      }
+      console.log(`Created S3 bucket '${S3_BUCKET}' in ${AWS_REGION}.`);
+    } catch (err) {
+      console.error(`Could not create S3 bucket '${S3_BUCKET}'. Set S3_BUCKET/AWS_REGION correctly and ensure permissions.`, err?.message || err);
+    }
+  }
+})();

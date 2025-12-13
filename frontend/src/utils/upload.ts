@@ -39,3 +39,44 @@ export async function presignAndUpload(opts: {
 
   return { url, key, viewUrl };
 }
+
+/**
+ * uploadDirect
+ * Bypasses S3 CORS by sending base64 bytes to backend /presign/direct which
+ * streams to S3. Slightly heavier on server but avoids client preflight.
+ */
+export async function uploadDirect(opts: {
+  token: string;
+  apiBaseUrl: string;
+  blob: Blob;
+  contentType: string;
+  testId: string;
+  userId: string;
+}): Promise<{ url: string; key: string }> {
+  const { token, apiBaseUrl, blob, contentType, testId, userId } = opts;
+  const buf = await blobToBase64(blob);
+  const res = await fetch(`${apiBaseUrl}/presign/direct`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    credentials: "include",
+    body: JSON.stringify({ contentType, context: { testId, userId }, dataBase64: buf }),
+  });
+  if (!res.ok) throw new Error(`direct upload failed: ${res.status}`);
+  return (await res.json()) as { url: string; key: string };
+}
+
+async function blobToBase64(b: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onerror = () => reject(fr.error);
+    fr.onload = () => {
+      const s = String(fr.result || "");
+      const base64 = s.startsWith("data:") ? s.split(",")[1] : s;
+      resolve(base64);
+    };
+    fr.readAsDataURL(b);
+  });
+}

@@ -18,8 +18,10 @@ export default function TakeQuiz({ token, quiz, attempt, onSubmitted }: { token:
     (window as any).onViolationHandler = (evt: any) => {
       console.log("Violation:", evt);
       const t = evt?.type as string;
-      // If fullscreen is exited or multiple faces persist, force submit
-      if (t === 'fullscreen_exit' || t === 'admin_forced_stop') submit();
+      // Fullscreen exit or device stop -> pause and re-check
+      if (t === 'fullscreen_exit') setNeedsRecheck(true);
+      // Admin forced stop -> submit immediately
+      if (t === 'admin_forced_stop') submit();
       if (t === 'camera_stopped' || t === 'screen_share_stopped') setNeedsRecheck(true);
     };
     (window as any).onForceSubmitHandler = () => submit();
@@ -70,6 +72,13 @@ export default function TakeQuiz({ token, quiz, attempt, onSubmitted }: { token:
     setAnswers((prev) => ({ ...prev, [q.id]: resp }));
   };
 
+  // Stepper state
+  const [step, setStep] = React.useState(0);
+  const [review, setReview] = React.useState<Record<number, boolean>>({});
+  const total = quiz?.questions?.length || 0;
+  const qAt = quiz?.questions?.[step];
+  const toggleReview = (qid: number) => setReview((r) => ({ ...r, [qid]: !r[qid] }));
+
   const submit = async () => {
     await fetch(`/api/attempts/${attempt.id}/submit`, {
       method: "POST",
@@ -113,17 +122,21 @@ export default function TakeQuiz({ token, quiz, attempt, onSubmitted }: { token:
   }
 
   return (
-    <div>
-      <div className="row" style={{ justifyContent: "space-between", marginBottom: 8 }}>
-        <h3 className="heading">{quiz.title}</h3>
-        <div className="row" style={{ gap: 16 }}>
-          <div className="muted">Progress: {progress}%</div>
-          {timeLeft != null && <div className="muted">Time: {fmt(timeLeft)}</div>}
+    <div className="container">
+      <div className="card" style={{ marginBottom: 12 }}>
+        <div className="row" style={{ justifyContent: "space-between" }}>
+          <h3 className="heading">{quiz.title}</h3>
+          <div className="row" style={{ gap: 12 }}>
+            <div className="chip current">Progress {progress}%</div>
+            {timeLeft != null && <div className="chip">Time {fmt(timeLeft)}</div>}
+          </div>
         </div>
-      </div>
-      <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>Proctoring active: Camera, Tab Switch, Fullscreen{quiz?.proctorConfig?.checks?.screenRecording ? ", Screen" : ""}</div>
-      <div style={{ height: 8, background: "#1e2747", borderRadius: 6, overflow: "hidden", marginBottom: 12 }}>
-        <div style={{ width: `${progress}%`, height: "100%", background: "linear-gradient(135deg, var(--accent), #8aa6ff)" }} />
+        <div className="toolbar">
+          <div className="muted" style={{ fontSize: 12 }}>Proctoring: Camera, Tab Switch, Fullscreen{quiz?.proctorConfig?.checks?.screenRecording ? ", Screen" : ""}</div>
+          <div style={{ flex: 1, height: 8, background: "#1e2747", borderRadius: 6, overflow: "hidden", marginLeft: 12 }}>
+            <div style={{ width: `${progress}%`, height: "100%", background: "linear-gradient(135deg, var(--accent), #8aa6ff)" }} />
+          </div>
+        </div>
       </div>
       {preview && (
         <div style={{ position: 'fixed', right: 24, bottom: 24, background: 'rgba(0,0,0,0.6)', padding: 6, borderRadius: 8, border: '1px solid rgba(255,255,255,0.08)' }}>
@@ -131,36 +144,63 @@ export default function TakeQuiz({ token, quiz, attempt, onSubmitted }: { token:
           <img src={preview} style={{ width: 200, height: 'auto', display: 'block', borderRadius: 6 }} />
         </div>
       )}
-      <ol>
-        {quiz.questions?.map((q: any) => (
-          <li key={q.id} style={{ marginBottom: 16 }}>
-            <div style={{ marginBottom: 8 }}>{q.text}</div>
-            {q.type === "MCQ" && Array.isArray(q.options) && (
-              <div>
-                {q.options.map((opt: any, idx: number) => (
-                  <label key={idx} style={{ display: "block" }}>
-                    <input type="radio" name={`q-${q.id}`} onChange={() => onAnswer(q, opt)} /> {String(opt)}
-                  </label>
-                ))}
-              </div>
-            )}
-            {q.type === "TRUE_FALSE" && (
-              <div>
-                {([true, false] as const).map((opt) => (
-                  <label key={String(opt)} style={{ display: "inline-block", marginRight: 12 }}>
-                    <input type="radio" name={`q-${q.id}`} onChange={() => onAnswer(q, opt)} /> {String(opt)}
-                  </label>
-                ))}
-              </div>
-            )}
-            {q.type === "SHORT_TEXT" && (
-              <input style={{ width: 400 }} onChange={(e) => onAnswer(q, e.target.value)} />
-            )}
-          </li>
-        ))}
-      </ol>
-      <div className="row" style={{ justifyContent: "space-between", marginTop: 12 }}>
-        <div className="muted" style={{ fontSize: 12 }}>Snapshots: camera on violations; screen periodic</div>
+      {/* Sticky toolbar chips */}
+      <div className="card" style={{ position: 'sticky', top: 0, zIndex: 5, marginBottom: 12 }}>
+        <div className="chips">
+          {quiz.questions?.map((q: any, i: number) => {
+            const answered = answers[q.id] != null;
+            const classes = ["chip", i === step ? "current" : "", review[q.id] ? "review" : answered ? "attempted" : ""].filter(Boolean).join(" ");
+            return (<button key={q.id} className={classes} onClick={() => setStep(i)}>{i+1}</button>);
+          })}
+        </div>
+      </div>
+
+      {/* Single-question panel */}
+      {qAt && (
+        <div className="card">
+          <div className="row" style={{ justifyContent: 'space-between' }}>
+            <div><strong>Question {step+1} of {total}</strong></div>
+            <button className="btn secondary" onClick={() => toggleReview(qAt.id)}>{review[qAt.id] ? 'Unmark' : 'Mark for review'}</button>
+          </div>
+          <div style={{ marginTop: 10, marginBottom: 8 }}>{qAt.text}</div>
+          {qAt.type === 'MCQ' && Array.isArray(qAt.options) && (
+            <div>
+              {qAt.options.map((opt: any, idx: number) => (
+                <label key={idx} style={{ display: 'block' }}>
+                  <input type="radio" name={`q-${qAt.id}`} checked={answers[qAt.id] === opt} onChange={() => onAnswer(qAt, opt)} /> {String(opt)}
+                </label>
+              ))}
+            </div>
+          )}
+          {qAt.type === 'TRUE_FALSE' && (
+            <div>
+              {([true,false] as const).map((opt) => (
+                <label key={String(opt)} style={{ display: 'inline-block', marginRight: 12 }}>
+                  <input type="radio" name={`q-${qAt.id}`} checked={answers[qAt.id] === opt} onChange={() => onAnswer(qAt, opt)} /> {String(opt)}
+                </label>
+              ))}
+            </div>
+          )}
+          {qAt.type === 'SHORT_TEXT' && (
+            <input style={{ width: 500 }} value={answers[qAt.id] ?? ''} onChange={(e) => onAnswer(qAt, e.target.value)} />
+          )}
+          <div className="row" style={{ justifyContent: 'space-between', marginTop: 12 }}>
+            <button className="btn secondary" onClick={() => setStep((s) => Math.max(0, s-1))}>Previous</button>
+            <button className="btn" onClick={() => setStep((s) => Math.min(total-1, s+1))}>Next</button>
+          </div>
+        </div>
+      )}
+      <div className="row" style={{ justifyContent: 'space-between', marginTop: 12 }}>
+        <div className="row" style={{ gap: 8 }}>
+          <button className="btn secondary" onClick={() => {
+            const idx = quiz.questions?.findIndex((x: any) => answers[x.id] == null) ?? -1;
+            if (idx >= 0) setStep(idx);
+          }}>Unanswered only</button>
+          <button className="btn secondary" onClick={() => {
+            const idx = quiz.questions?.findIndex((x: any) => review[x.id]) ?? -1;
+            if (idx >= 0) setStep(idx);
+          }}>Marked for review</button>
+        </div>
         <button className="btn" onClick={submit}>Submit</button>
       </div>
     </div>

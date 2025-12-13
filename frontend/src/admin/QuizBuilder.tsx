@@ -37,6 +37,26 @@ export default function QuizBuilder({ token, initialQuiz, onSaved }: { token: st
     setQuestions((prev) => prev.map((q, i) => (i === idx ? { ...q, ...patch } : q)));
   };
 
+  const moveQuestion = (idx: number, dir: -1 | 1) => {
+    setQuestions((prev) => {
+      const next = prev.slice();
+      const target = idx + dir;
+      if (target < 0 || target >= next.length) return prev;
+      const [item] = next.splice(idx, 1);
+      next.splice(target, 0, item);
+      return next;
+    });
+  };
+
+  const duplicateQuestion = (idx: number) => {
+    setQuestions((prev) => {
+      const next = prev.slice();
+      const copy = { ...next[idx], text: next[idx].text + " (copy)" } as Question;
+      next.splice(idx + 1, 0, copy);
+      return next;
+    });
+  };
+
   const save = async () => {
     setSaving(true); setMessage("");
     try {
@@ -81,15 +101,22 @@ export default function QuizBuilder({ token, initialQuiz, onSaved }: { token: st
         {questions.length === 0 && <p className="muted">No questions yet. Add one above.</p>}
         {questions.map((q, i) => (
           <div key={i} className="card" style={{ marginTop: 10 }}>
-            <div className="row" style={{ gap: 8 }}>
-              <select className="select" value={q.type} onChange={(e) => updateQuestion(i, { type: e.target.value as any })}>
-                <option value="MCQ">MCQ</option>
-                <option value="TRUE_FALSE">True/False</option>
-                <option value="SHORT_TEXT">Short Text</option>
-              </select>
-              <input className="input grow" placeholder="Question text" value={q.text} onChange={(e) => updateQuestion(i, { text: e.target.value })} />
-              <input className="input" style={{ width: 80 }} type="number" value={q.points ?? 1} onChange={(e) => updateQuestion(i, { points: Number(e.target.value) })} />
-              <button className="btn secondary" onClick={() => setQuestions((prev) => prev.filter((_, idx) => idx !== i))}>Remove</button>
+            <div className="row" style={{ gap: 8, justifyContent: 'space-between' }}>
+              <div className="row" style={{ gap: 8, flex: 1 }}>
+                <select className="select" value={q.type} onChange={(e) => updateQuestion(i, { type: e.target.value as any })}>
+                  <option value="MCQ">MCQ</option>
+                  <option value="TRUE_FALSE">True/False</option>
+                  <option value="SHORT_TEXT">Short Text</option>
+                </select>
+                <input className="input grow" placeholder="Question text" value={q.text} onChange={(e) => updateQuestion(i, { text: e.target.value })} />
+                <input className="input" style={{ width: 80 }} type="number" value={q.points ?? 1} onChange={(e) => updateQuestion(i, { points: Number(e.target.value) })} />
+              </div>
+              <div className="row" style={{ gap: 6 }}>
+                <button className="btn secondary" title="Move up" onClick={() => moveQuestion(i, -1)}>↑</button>
+                <button className="btn secondary" title="Move down" onClick={() => moveQuestion(i, +1)}>↓</button>
+                <button className="btn secondary" title="Duplicate" onClick={() => duplicateQuestion(i)}>⎘</button>
+                <button className="btn danger" onClick={() => setQuestions((prev) => prev.filter((_, idx) => idx !== i))}>Remove</button>
+              </div>
             </div>
             {q.type === "MCQ" && (
               <div style={{ marginTop: 8 }}>

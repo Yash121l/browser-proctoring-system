@@ -47,7 +47,7 @@ export default function PreflightChecks({ onReady, require }: Props) {
   const allOk = (!needs.camera || camOk) && (!needs.screen || screenOk) && (!needs.fullscreen || fsOk);
 
   return (
-    <div className="card" style={{ maxWidth: 680, margin: "20px auto" }}>
+    <div className="modal-backdrop"><div className="modal">
       <h3 className="heading">System Check</h3>
       <p className="muted">We’ll verify your setup before starting the quiz.</p>
       <ul className="list" style={{ marginTop: 10 }}>
@@ -97,7 +97,6 @@ export default function PreflightChecks({ onReady, require }: Props) {
       <div className="row" style={{ justifyContent: "flex-end", marginTop: 12 }}>
         <button className="btn" disabled={!allOk} onClick={() => onReady({ cam: camOk, mic: false, screen: screenOk, fullscreen: fsOk })}>Continue</button>
       </div>
-    </div>
+    </div></div>
   );
 }
-

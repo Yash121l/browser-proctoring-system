@@ -2,7 +2,7 @@
 import { io, Socket } from "socket.io-client";
 import { sha256Hex } from "../utils/hash";
 import { EventStore } from "../utils/indexeddb";
-import { presignAndUpload } from "../utils/upload";
+import { presignAndUpload, uploadDirect } from "../utils/upload";
 import { ProctorConfig, ProctorEvent, SensorPlugin } from "../core/types";
 import { FullscreenSensor } from "./plugins/FullscreenSensor";
 import { TabSwitchSensor } from "./plugins/TabSwitchSensor";
@@ -102,6 +102,8 @@ export class ProctorSDK {
       this.sensors.push(
         new FullscreenSensor({
           onViolation: (evt) => this.handleViolation(evt),
+          autoRequest: true,
+          initGraceMs: 1500,
         }),
       );
     }
@@ -123,15 +125,29 @@ export class ProctorSDK {
             // Upload evidence only when event occurs
             if (snapshotBlob) {
               try {
-                const { url, key, viewUrl } = await presignAndUpload({
-                  token: this.token!,
-                  apiBaseUrl: apiBase,
-                  blob: snapshotBlob,
-                  contentType: "image/jpeg",
-                  testId: this.config.testId,
-                  userId: this.config.userId,
-                });
-                evt.evidence = { type: "image/jpeg", url: viewUrl || url, key };
+                let url: string | undefined; let key: string | undefined; let viewUrl: string | undefined;
+                try {
+                  const r = await presignAndUpload({
+                    token: this.token!,
+                    apiBaseUrl: apiBase,
+                    blob: snapshotBlob,
+                    contentType: "image/jpeg",
+                    testId: this.config.testId,
+                    userId: this.config.userId,
+                  });
+                  url = r.url; key = r.key; viewUrl = r.viewUrl;
+                } catch {
+                  const r = await uploadDirect({
+                    token: this.token!,
+                    apiBaseUrl: apiBase,
+                    blob: snapshotBlob,
+                    contentType: "image/jpeg",
+                    testId: this.config.testId,
+                    userId: this.config.userId,
+                  });
+                  url = r.url; key = r.key; viewUrl = r.url;
+                }
+                evt.evidence = { type: "image/jpeg", url: viewUrl || url!, key: key! };
               } catch (e) {
                 console.error("Evidence upload failed", e);
                 // Continue, we still log the event even if upload fails

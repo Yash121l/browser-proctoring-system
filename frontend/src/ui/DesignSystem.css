@@ -29,3 +29,14 @@ body { margin: 0; background: linear-gradient(180deg, #0b1020 0%, #0f1430 100%);
 .list { list-style: none; padding: 0; margin: 0; }
 .list li { padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.06); }
 
+/* Modal */
+.modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.55); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+.modal { width: min(760px, 92vw); background: var(--panel); border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 16px; box-shadow: 0 18px 60px rgba(0,0,0,0.45); }
+
+/* Chips + toolbar */
+.chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip { font-size: 12px; padding: 6px 10px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.1); background: #141a36; color: #cdd3e1; }
+.chip.current { background: linear-gradient(135deg, var(--accent), #8aa6ff); color: white; border: 0; }
+.chip.attempted { background: #163a3a; color: #a9f0c1; border-color: #1f514e; }
+.chip.review { background: #3a2a18; color: #ffebc1; border-color: #5a4022; }
+.toolbar { display: flex; gap: 8px; align-items: center; justify-content: space-between; margin-top: 10px; }
