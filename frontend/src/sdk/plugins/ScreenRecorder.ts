@@ -1,5 +1,6 @@
 import { SensorPlugin } from "../../core/types";
 import { uploadDirect, presignAndUpload } from "../../utils/upload";
+import { CombinedManifestWriter } from "../../utils/manifest";
 
 export class ScreenRecorder implements SensorPlugin {
   private stream?: MediaStream;
@@ -7,9 +8,9 @@ export class ScreenRecorder implements SensorPlugin {
   private chunks: Blob[] = [];
   private running = false;
   private seq = 0;
-  private manifest: { chunks: { key?: string; url?: string; ts: number; seq: number; source: 'screen'|'camera' }[] } = { chunks: [] };
+  private manifest: { chunks: { key?: string; url?: string; ts: number; seq: number; source: 'screen' | 'camera' }[] } = { chunks: [] };
 
-  constructor(private opts: { token: string; apiBaseUrl: string; testId: string; userId: string; chunkMs?: number; mimeType?: string; source?: 'screen'|'camera' }) {}
+  constructor(private opts: { token: string; apiBaseUrl: string; testId: string; userId: string; chunkMs?: number; mimeType?: string; source?: 'screen' | 'camera' }) { }
 
   async init() {
     // Lazy permission; recorder starts on start()
@@ -30,7 +31,7 @@ export class ScreenRecorder implements SensorPlugin {
       this.recorder.onstop = () => this.flush();
       const chunkMs = Math.max(5000, this.opts.chunkMs ?? 60000);
       this.recorder.start(chunkMs);
-      try { (window as any).onRecordingStatus?.({ source: this.opts.source || 'screen', active: true }); } catch {}
+      try { (window as any).onRecordingStatus?.({ source: this.opts.source || 'screen', active: true }); } catch { }
       // Periodic flush
       const flushLoop = async () => {
         while (this.running) {
@@ -59,7 +60,8 @@ export class ScreenRecorder implements SensorPlugin {
         userId: this.opts.userId,
         contextExtras: { sequence: this.seq, source: this.opts.source || 'screen' },
       });
-      this.manifest.chunks.push({ key: uploaded.key, url: uploaded.url, ts: Date.now(), seq: this.seq, source: (this.opts.source || 'screen') as any });
+      const entry = { key: uploaded.key, url: uploaded.url, ts: Date.now(), seq: this.seq, source: (this.opts.source || 'screen') as any } as const;
+      this.manifest.chunks.push(entry);
       // Upload/overwrite manifest JSON (direct avoids CORS)
       const manifestBlob = new Blob([JSON.stringify(this.manifest)], { type: 'application/json' });
       await uploadDirect({
@@ -70,7 +72,15 @@ export class ScreenRecorder implements SensorPlugin {
         testId: this.opts.testId,
         userId: this.opts.userId,
         contextExtras: { name: `manifest.${this.opts.source || 'screen'}.json` },
-      }).catch(() => {});
+      }).catch(() => { });
+      // Combined manifest
+      await CombinedManifestWriter.addChunk({
+        token: this.opts.token,
+        apiBaseUrl: this.opts.apiBaseUrl,
+        testId: this.opts.testId,
+        userId: this.opts.userId,
+        entry: entry as any,
+      });
     } catch {
       try {
         this.seq += 1;
@@ -83,7 +93,8 @@ export class ScreenRecorder implements SensorPlugin {
           userId: this.opts.userId,
           contextExtras: { sequence: this.seq, source: this.opts.source || 'screen' },
         });
-        this.manifest.chunks.push({ key: up2.key, url: up2.url, ts: Date.now(), seq: this.seq, source: (this.opts.source || 'screen') as any });
+        const entry2 = { key: up2.key, url: up2.url, ts: Date.now(), seq: this.seq, source: (this.opts.source || 'screen') as any } as const;
+        this.manifest.chunks.push(entry2);
         const manifestBlob = new Blob([JSON.stringify(this.manifest)], { type: 'application/json' });
         await presignAndUpload({
           token: this.opts.token,
@@ -93,8 +104,15 @@ export class ScreenRecorder implements SensorPlugin {
           testId: this.opts.testId,
           userId: this.opts.userId,
           contextExtras: { name: `manifest.${this.opts.source || 'screen'}.json` },
-        }).catch(() => {});
-      } catch {}
+        }).catch(() => { });
+        await CombinedManifestWriter.addChunk({
+          token: this.opts.token,
+          apiBaseUrl: this.opts.apiBaseUrl,
+          testId: this.opts.testId,
+          userId: this.opts.userId,
+          entry: entry2 as any,
+        });
+      } catch { }
     }
   }
 
@@ -102,7 +120,7 @@ export class ScreenRecorder implements SensorPlugin {
     this.running = false;
     this.recorder?.stop();
     this.stream?.getTracks().forEach((t) => t.stop());
-    try { (window as any).onRecordingStatus?.({ source: this.opts.source || 'screen', active: false }); } catch {}
+    try { (window as any).onRecordingStatus?.({ source: this.opts.source || 'screen', active: false }); } catch { }
   }
 
   async destroy() { this.stop(); }

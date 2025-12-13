@@ -66,6 +66,14 @@ export default function TakeQuiz({ token, quiz, attempt, onSubmitted }: { token:
       heartbeatIntervalMs: qc?.heartbeatIntervalMs ?? 5000,
       frameCaptureIntervalMs: qc?.frameCaptureIntervalMs ?? 200,
       screenSnapshotIntervalMs: qc?.screenSnapshotIntervalMs ?? 30000,
+      recording: {
+        enabled: true,
+        chunkMs: qc?.recording?.chunkMs ?? 60000,
+        mimeType: qc?.recording?.mimeType ?? 'video/webm;codecs=vp8',
+        // cameraEnabled is used by ProctorSDK as an optional flag
+        ...(qc?.recording || {}),
+        cameraEnabled: qc?.recording?.cameraEnabled ?? true,
+      } as any,
     } as any;
     const instance = new ProctorSDK(cfg);
     // Use per-attempt WS token for correct sub/testId pairing

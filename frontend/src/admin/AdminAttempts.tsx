@@ -67,7 +67,7 @@ export default function AdminAttempts({ token, quizId, onOpenSession }: { token:
                 <td style={{ padding: '8px 6px' }}>
                   <button className="btn" onClick={() => {
                     try {
-                      sessionStorage.setItem('admin_target_session', JSON.stringify({ testId: String(quizId), userId: String(r.userId) }));
+                      sessionStorage.setItem('admin_target_session', JSON.stringify({ testId: String(quizId), userId: String(r.userId), loadRecording: true }));
                     } catch {}
                     onOpenSession(String(r.userId));
                   }}>Open Session</button>

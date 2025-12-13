@@ -63,11 +63,26 @@ export default function App() {
         {adminTab === "attempts" && (
           <div className="card">
             <div className="row" style={{ gap: 8 }}>
-              <input className="input" style={{ width: 160 }} placeholder="Quiz ID" value={attemptsQuizId ?? ''} onChange={(e) => setAttemptsQuizId(e.target.value ? Number(e.target.value) : null)} />
+              <input
+                className="input"
+                style={{ width: 160 }}
+                placeholder="Quiz ID"
+                value={attemptsQuizId ?? ''}
+                onChange={(e) => {
+                  const val = e.target.value ? Number(e.target.value) : null;
+                  setAttemptsQuizId(val);
+                  try {
+                    const url = new URL(window.location.href);
+                    if (val != null) url.searchParams.set('quizId', String(val)); else url.searchParams.delete('quizId');
+                    window.history.replaceState({}, '', url.toString());
+                  } catch {}
+                }}
+              />
             </div>
             {attemptsQuizId != null && <AdminAttempts token={token} quizId={attemptsQuizId} onOpenSession={(userId) => {
+              // Switch tab and trigger Sessions to auto-open via sessionStorage handshake
               setAdminTab('sessions');
-              // Optionally store selection for AdminSessions; left as future enhancement
+              // Sessions component reads admin_target_session and auto-joins or opens offline analysis
             }} />}
           </div>
         )}

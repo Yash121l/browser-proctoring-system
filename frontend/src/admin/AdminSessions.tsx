@@ -21,12 +21,14 @@ export default function AdminSessions({ token }: { token: string }) {
   const [recordingUrl, setRecordingUrl] = React.useState<string | null>(null);
   const [playlist, setPlaylist] = React.useState<{ url: string; ts: number; seq: number; source?: 'screen'|'camera' }[]>([]);
   const [quizIdInput, setQuizIdInput] = React.useState<string>("");
+  const [seekTs, setSeekTs] = React.useState<number | null>(null);
+  const [typeFilter, setTypeFilter] = React.useState<Record<string, boolean>>({});
   const socketRef = React.useRef<Socket | null>(null);
   const pcRef = React.useRef<RTCPeerConnection | null>(null);
   const videoRef = React.useRef<HTMLVideoElement>(null);
   
   // Seamless player using Media Source Extensions
-  function ChunkPlayer({ playlist }: { playlist: { url: string; ts: number; seq: number }[] }) {
+  function ChunkPlayer({ playlist, seekTs }: { playlist: { url: string; ts: number; seq: number }[]; seekTs?: number }) {
     const vref = React.useRef<HTMLVideoElement>(null);
     const [idx, setIdx] = React.useState(0);
     const [appending, setAppending] = React.useState(false);
@@ -40,6 +42,12 @@ export default function AdminSessions({ token }: { token: string }) {
       video.src = URL.createObjectURL(ms);
       let source: SourceBuffer | null = null;
       let canceled = false;
+
+      const startFrom = (() => {
+        if (!seekTs) return 0;
+        const j = playlist.findIndex((c) => Number(c.ts) >= Number(seekTs));
+        return j >= 0 ? j : 0;
+      })();
 
       const appendChunk = async (i: number) => {
         if (canceled || i >= playlist.length) return;
@@ -60,15 +68,15 @@ export default function AdminSessions({ token }: { token: string }) {
       ms.addEventListener('sourceopen', () => {
         try {
           source = ms.addSourceBuffer('video/webm; codecs="vp8,vorbis"');
-          appendChunk(0);
+          appendChunk(startFrom);
         } catch {
           // fallback to normal playback of first chunk
-          video.src = playlist[0].url;
+          video.src = playlist[startFrom].url;
         }
       });
 
       return () => { canceled = true; try { ms.endOfStream(); } catch {} };
-    }, [playlist]);
+    }, [playlist, seekTs]);
 
     if (!playlist.length) return <div className="muted">No chunks</div>;
     return (
@@ -83,18 +91,18 @@ export default function AdminSessions({ token }: { token: string }) {
   }
 
   // Dual player: side-by-side screen + camera using two MSE players with filtered playlists
-  function DualPlayer({ playlist }: { playlist: { url: string; ts: number; seq: number; source?: 'screen'|'camera' }[] }) {
+  function DualPlayer({ playlist, seekTs }: { playlist: { url: string; ts: number; seq: number; source?: 'screen'|'camera' }[]; seekTs?: number }) {
     const screen = playlist.filter((c) => c.source !== 'camera');
     const camera = playlist.filter((c) => c.source === 'camera');
     return (
       <div className="row" style={{ gap: 12 }}>
         <div style={{ flex: 1 }}>
           <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Screen</div>
-          <ChunkPlayer playlist={screen as any} />
+          <ChunkPlayer playlist={screen as any} seekTs={seekTs} />
         </div>
         <div style={{ flex: 1 }}>
           <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Camera</div>
-          <ChunkPlayer playlist={camera as any} />
+          <ChunkPlayer playlist={camera as any} seekTs={seekTs} />
         </div>
       </div>
     );
@@ -165,14 +173,31 @@ export default function AdminSessions({ token }: { token: string }) {
     try {
       const t = sessionStorage.getItem('admin_target_session');
       if (t) {
-        const tgt = JSON.parse(t) as { testId: string; userId: string };
+        const tgt = JSON.parse(t) as { testId: string; userId: string; loadRecording?: boolean };
         const match = list.find((s) => s.testId === String(tgt.testId) && s.userId === String(tgt.userId));
         if (match) {
           await joinSession(match);
+          if (tgt.loadRecording) await loadRecording();
+          sessionStorage.removeItem('admin_target_session');
+        } else {
+          // Fallback: open an offline analysis view for past sessions
+          await openOfflineSession(String(tgt.testId), String(tgt.userId));
+          if (tgt.loadRecording) await loadRecording();
           sessionStorage.removeItem('admin_target_session');
         }
       }
     } catch {}
+  };
+
+  // Open analysis for a session that is no longer active
+  const openOfflineSession = async (testId: string, userId: string) => {
+    const virtual: SessionInfo = { testId, userId, socketId: 'offline', connectedAt: Date.now() };
+    setSelected(virtual);
+    const res = await fetch(`/admin/events?testId=${encodeURIComponent(testId)}&userId=${encodeURIComponent(userId)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json();
+    setEvents(data.events || []);
   };
 
   const joinSession = async (s: SessionInfo) => {
@@ -187,6 +212,9 @@ export default function AdminSessions({ token }: { token: string }) {
     setEvents(data.events || []);
     setPlaylist([]);
   };
+
+  // Auto-refresh on mount to honor admin_target_session
+  React.useEffect(() => { refreshSessions(); }, []);
 
   const requestView = () => {
     const socket = socketRef.current;
@@ -212,9 +240,10 @@ export default function AdminSessions({ token }: { token: string }) {
     if (chunks[0]?.url) setRecordingUrl(chunks[0].url);
   };
 
+  // simplified redesign not applied here to avoid conflicts; retain existing layout
   return (
     <div className="card">
-      <div className="row" style={{ justifyContent: "space-between" }}>
+      <div className="row" style={{ justifyContent: 'space-between' }}>
         <h3 className="heading">Live Sessions</h3>
         <button className="btn secondary" onClick={refreshSessions}>Refresh</button>
       </div>
@@ -224,7 +253,7 @@ export default function AdminSessions({ token }: { token: string }) {
           <ul className="list">
             {sessions.map((s) => (
               <li key={s.socketId}>
-                <div className="row" style={{ justifyContent: "space-between" }}>
+                <div className="row" style={{ justifyContent: 'space-between' }}>
                   <div>
                     <div><strong>{s.testId}</strong> <span className="muted">/ {s.userId}</span></div>
                     <div className="muted" style={{ fontSize: 12 }}>Connected: {new Date(s.connectedAt).toLocaleTimeString()}</div>
@@ -241,19 +270,21 @@ export default function AdminSessions({ token }: { token: string }) {
             <p className="muted">Select a session to view.</p>
           ) : (
             <div>
-              <div className="row" style={{ marginBottom: 8, justifyContent: 'space-between' }}>
-                <div className="row" style={{ gap: 8 }}>
-                  <button className="btn" onClick={requestView}>Request Screen</button>
-                  <button className="btn danger" onClick={forceStop}>Force Stop</button>
+              <div className="row" style={{ marginBottom: 8, justifyContent: 'space-between', flexWrap: 'wrap' }}>
+                <div>
+                  <div><strong>Test {selected.testId}</strong> <span className="muted">/ User {selected.userId}</span></div>
+                  <div className="row" style={{ gap: 8, marginTop: 4 }}>
+                    {selected.socketId === 'offline' && <span className="chip" style={{ background: '#3a2a18', color: '#ffebc1' }}>Offline Analysis</span>}
+                    {events.length > 0 && <span className="chip">Last event: {new Date(Math.max(...events.map((e:any)=> new Date(e.createdAt||e?.payload?.timestamp||Date.now()).getTime()))).toLocaleTimeString()}</span>}
+                  </div>
                 </div>
-                <div className="row" style={{ gap: 6 }}>
-                  <input className="input" style={{ width: 100 }} placeholder="Quiz ID" value={quizIdInput} onChange={(e) => setQuizIdInput(e.target.value)} />
-                  <a className="btn secondary" href={quizIdInput ? `/admin/quiz/${encodeURIComponent(quizIdInput)}/attempts` : undefined} onClick={(e) => e.preventDefault()}>View Attempts API</a>
+                <div className="row" style={{ gap: 8 }}>
+                  <button className="btn" onClick={requestView} disabled={selected.socketId === 'offline'}>Request Screen</button>
+                  <button className="btn danger" onClick={forceStop} disabled={selected.socketId === 'offline'}>Force Stop</button>
                 </div>
               </div>
-              <video ref={videoRef} autoPlay playsInline controls style={{ width: "100%", borderRadius: 8, border: "1px solid rgba(255,255,255,0.08)" }} />
+              <video ref={videoRef} autoPlay playsInline controls style={{ width: '100%', borderRadius: 8, border: '1px solid rgba(255,255,255,0.08)' }} />
 
-              {/* Recordings player (if a manifest or a latest chunk is available) */}
               <div className="card" style={{ marginTop: 12 }}>
                 <div className="row" style={{ justifyContent: 'space-between' }}>
                   <h4>Recording</h4>
@@ -273,8 +304,8 @@ export default function AdminSessions({ token }: { token: string }) {
                 followLive={followLive}
                 events={events}
                 snapshots={snapshots as any}
-                onCursorChange={(t) => { setCursor(t); setFollowLive(t >= Date.now() - 1500); }}
-                onFollowLive={() => { setFollowLive(true); setCursor(Date.now()); setTimeline((tl) => ({ ...tl, end: Date.now() })); }}
+                onCursorChange={(t) => { setCursor(t); setSeekTs(t); setFollowLive(t >= Date.now() - 1500); }}
+                onFollowLive={() => { setFollowLive(true); const now = Date.now(); setSeekTs(now); setCursor(now); setTimeline((tl) => ({ ...tl, end: now })); }}
                 onHoverPreview={setHoverPreview}
               />
               {hoverPreview && (
@@ -284,22 +315,6 @@ export default function AdminSessions({ token }: { token: string }) {
                   </div>
                 </div>
               )}
-              <h4 style={{ marginTop: 12 }}>Evidence Snapshots</h4>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8 }}>
-                {snapshots.map((s, i) => (
-                  <div key={i} className="card" style={{ padding: 6 }}>
-                    <div className="muted" style={{ fontSize: 10 }}>{new Date(s.ts).toLocaleTimeString()} · {s.type}</div>
-                    <img src={s.url} style={{ width: '100%', borderRadius: 6 }} />
-                  </div>
-                ))}
-                {snapshots.length === 0 && <div className="muted" style={{ fontSize: 12 }}>No snapshots yet.</div>}
-              </div>
-              <h4>Recent Events</h4>
-              <div style={{ maxHeight: 240, overflow: "auto", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 8, padding: 8 }}>
-                {events.map((e, i) => (
-                  <pre key={i} style={{ margin: 0, fontSize: 12 }}>{JSON.stringify(e, null, 2)}</pre>
-                ))}
-              </div>
             </div>
           )}
         </div>
