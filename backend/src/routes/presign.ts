@@ -55,7 +55,9 @@ router.post("/", async (req: Request, res: Response) => {
     });
 
     const url = await getSignedUrl(s3, cmd, { expiresIn: PRESIGN_TTL_SECONDS });
-    return res.json({ url, key });
+    const region = AWS_REGION;
+    const viewUrl = `https://${S3_BUCKET}.s3.${region}.amazonaws.com/${encodeURIComponent(key)}`;
+    return res.json({ url, key, viewUrl });
   } catch (e: any) {
     console.error("presign error", e);
     return res.status(500).json({ error: "server_error" });

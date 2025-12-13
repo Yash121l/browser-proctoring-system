@@ -7,7 +7,10 @@ export type ProctorEventType =
   | "no_face_detected"
   | "multiple_faces_detected"
   | "audio_noise"
-  | "admin_forced_stop";
+  | "admin_forced_stop"
+  | "screen_snapshot"
+  | "camera_stopped"
+  | "screen_share_stopped";
 
 export interface ProctorEvent {
   testId: string;
@@ -43,9 +46,11 @@ export interface ProctorConfig {
   callbacks?: {
     onViolation?: string; // global path, e.g., window.onViolationHandler
     onForceSubmit?: string;
+    onScreenPreview?: string; // global path for local screen preview thumbnails
   };
   heartbeatIntervalMs?: number;
   frameCaptureIntervalMs?: number;
+  screenSnapshotIntervalMs?: number;
 
   // Optional endpoints; default to location.origin
   apiBaseUrl?: string;

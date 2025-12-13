@@ -123,7 +123,7 @@ export class ProctorSDK {
             // Upload evidence only when event occurs
             if (snapshotBlob) {
               try {
-                const { url, key } = await presignAndUpload({
+                const { url, key, viewUrl } = await presignAndUpload({
                   token: this.token!,
                   apiBaseUrl: apiBase,
                   blob: snapshotBlob,
@@ -131,7 +131,7 @@ export class ProctorSDK {
                   testId: this.config.testId,
                   userId: this.config.userId,
                 });
-                evt.evidence = { type: "image/jpeg", url, key };
+                evt.evidence = { type: "image/jpeg", url: viewUrl || url, key };
               } catch (e) {
                 console.error("Evidence upload failed", e);
                 // Continue, we still log the event even if upload fails
@@ -154,8 +154,18 @@ export class ProctorSDK {
           onViolation: (evt) => this.handleViolation(evt),
         }),
       );
-      // Local lightweight recorder heartbeat
-      this.sensors.push(new ScreenCaptureSensor({ onViolation: (evt) => this.handleViolation(evt) }));
+      // Local periodic screen snapshot evidence
+      const previewCbName = this.config?.callbacks?.onScreenPreview;
+      const previewCb = previewCbName && (this.getByPath(previewCbName) as ((dataUrl: string) => void) | undefined);
+      this.sensors.push(new ScreenCaptureSensor({
+        onViolation: (evt) => this.handleViolation(evt),
+        onPreview: (d) => { try { previewCb?.(d); } catch {} },
+        testId: this.config.testId,
+        userId: this.config.userId,
+        token: this.token!,
+        apiBaseUrl: apiBase,
+        snapshotIntervalMs: this.config.screenSnapshotIntervalMs ?? 30000,
+      }));
     }
 
     // Start sensors

@@ -40,6 +40,9 @@ export default function AdminQuizzes({ token, onEdit }: { token: string; onEdit:
     }
   };
 
+  // Expose a method to trigger refresh from outside if needed
+  (window as any).refreshQuizzes = load;
+
   return (
     <div className="card">
       <div className="row" style={{ justifyContent: "space-between" }}>
@@ -68,4 +71,3 @@ export default function AdminQuizzes({ token, onEdit }: { token: string; onEdit:
     </div>
   );
 }
-

@@ -38,7 +38,14 @@ export default function StudentDashboard({ token, onStart }: { token: string; on
   return (
     <div>
       {showChecks && selected ? (
-        <PreflightChecks onReady={onChecksReady} require={{ camera: true, screen: true, fullscreen: true }} />
+        <PreflightChecks
+          onReady={onChecksReady}
+          require={{
+            camera: true,
+            screen: Boolean(selected?.proctorConfig?.checks?.screenRecording ?? true),
+            fullscreen: Boolean(selected?.proctorConfig?.checks?.forceFullScreen ?? true),
+          }}
+        />
       ) : (
         <div className="card">
           <h3 className="heading">Available Quizzes</h3>

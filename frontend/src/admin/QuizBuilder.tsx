@@ -54,6 +54,8 @@ export default function QuizBuilder({ token, initialQuiz, onSaved }: { token: st
       setMessage("Quiz saved successfully.");
       if (!isEditing) { setTitle(""); setDescription(""); setQuestions([]); }
       onSaved?.();
+      // Try to auto-refresh the quizzes list if present
+      try { (window as any).refreshQuizzes?.(); } catch {}
     } catch (e: any) {
       setMessage(e?.message || "Save failed");
     } finally {
@@ -128,7 +130,63 @@ export default function QuizBuilder({ token, initialQuiz, onSaved }: { token: st
       </div>
 
       <div className="card" style={{ marginTop: 12 }}>
-        <h4>Proctor Config (JSON)</h4>
+        <h4>Proctor Settings</h4>
+        <div className="row" style={{ gap: 16, flexWrap: "wrap" }}>
+          {[
+            { key: "forceFullScreen", label: "Force Fullscreen" },
+            { key: "tabSwitchDetection", label: "Tab Switch Detection" },
+            { key: "cameraMonitoring", label: "Camera Monitoring" },
+            { key: "faceDetection", label: "Face Detection" },
+            { key: "multipleFaceDetection", label: "Multiple Faces" },
+            { key: "objectDetection", label: "Object Detection" },
+            { key: "audioMonitoring", label: "Audio Monitoring" },
+            { key: "screenRecording", label: "Screen Recording" },
+          ].map((c) => (
+            <label key={c.key} className="row" style={{ gap: 8, minWidth: 220 }}>
+              <input
+                type="checkbox"
+                checked={Boolean((JSON.parse(proctorConfig).checks || {})[c.key])}
+                onChange={(e) => {
+                  const cfg = JSON.parse(proctorConfig);
+                  cfg.checks = cfg.checks || {};
+                  cfg.checks[c.key] = e.target.checked;
+                  setProctorConfig(JSON.stringify(cfg, null, 2));
+                }}
+              /> {c.label}
+            </label>
+          ))}
+        </div>
+        <div className="row" style={{ marginTop: 8 }}>
+          <label className="row" style={{ gap: 8 }}>
+            Duration (minutes)
+            <input
+              className="input"
+              style={{ width: 120 }}
+              type="number"
+              value={Number((JSON.parse(proctorConfig).durationMinutes ?? 30))}
+              onChange={(e) => {
+                const cfg = JSON.parse(proctorConfig);
+                cfg.durationMinutes = Number(e.target.value);
+                setProctorConfig(JSON.stringify(cfg, null, 2));
+              }}
+            />
+          </label>
+          <label className="row" style={{ gap: 8 }}>
+            Screen snapshot interval (ms)
+            <input
+              className="input"
+              style={{ width: 160 }}
+              type="number"
+              value={Number((JSON.parse(proctorConfig).screenSnapshotIntervalMs ?? 30000))}
+              onChange={(e) => {
+                const cfg = JSON.parse(proctorConfig);
+                cfg.screenSnapshotIntervalMs = Number(e.target.value);
+                setProctorConfig(JSON.stringify(cfg, null, 2));
+              }}
+            />
+          </label>
+        </div>
+        <h4 style={{ marginTop: 12 }}>Advanced (JSON)</h4>
         <textarea className="input" style={{ width: "100%", minHeight: 160 }} value={proctorConfig} onChange={(e) => setProctorConfig(e.target.value)} />
       </div>
 

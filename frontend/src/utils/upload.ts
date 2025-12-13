@@ -13,7 +13,7 @@ export async function presignAndUpload(opts: {
   contentType: string;
   testId: string;
   userId: string;
-}): Promise<{ url: string; key: string }> {
+}): Promise<{ url: string; key: string; viewUrl?: string }> {
   const { token, apiBaseUrl, blob, contentType, testId, userId } = opts;
   const res = await fetch(`${apiBaseUrl}/presign`, {
     method: "POST",
@@ -28,7 +28,7 @@ export async function presignAndUpload(opts: {
     }),
   });
   if (!res.ok) throw new Error(`presign failed: ${res.status}`);
-  const { url, key } = (await res.json()) as { url: string; key: string };
+  const { url, key, viewUrl } = (await res.json()) as { url: string; key: string; viewUrl?: string };
 
   const put = await fetch(url, {
     method: "PUT",
@@ -37,6 +37,5 @@ export async function presignAndUpload(opts: {
   });
   if (!put.ok) throw new Error(`upload failed: ${put.status}`);
 
-  return { url, key };
+  return { url, key, viewUrl };
 }
-

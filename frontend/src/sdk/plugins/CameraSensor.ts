@@ -56,6 +56,24 @@ export class CameraSensor implements SensorPlugin {
     this.worker = new Worker(new URL("../../ai/face.worker.ts", import.meta.url), {
       type: "module",
     });
+
+    // Detect camera being turned off (track ended)
+    try {
+      this.stream.getVideoTracks().forEach((t) => {
+        t.addEventListener("ended", () => {
+          this.onViolation(
+            {
+              type: "camera_stopped",
+              testId: "",
+              userId: "",
+              timestamp: new Date().toISOString(),
+              details: { reason: "track_ended" },
+            },
+            undefined,
+          );
+        });
+      });
+    } catch {}
   }
 
   /**
@@ -138,4 +156,3 @@ export class CameraSensor implements SensorPlugin {
     return blob;
   }
 }
-

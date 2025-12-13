@@ -13,6 +13,7 @@ export default function AdminSessions({ token }: { token: string }) {
   const [sessions, setSessions] = React.useState<SessionInfo[]>([]);
   const [selected, setSelected] = React.useState<SessionInfo | null>(null);
   const [events, setEvents] = React.useState<any[]>([]);
+  const [snapshots, setSnapshots] = React.useState<{ ts: string; url: string; type: string }[]>([]);
   const socketRef = React.useRef<Socket | null>(null);
   const pcRef = React.useRef<RTCPeerConnection | null>(null);
   const videoRef = React.useRef<HTMLVideoElement>(null);
@@ -20,7 +21,15 @@ export default function AdminSessions({ token }: { token: string }) {
   React.useEffect(() => {
     const s = io(undefined, { auth: { token }, transports: ["websocket"], path: "/socket.io" });
     socketRef.current = s;
-    const onEvent = (ev: any) => setEvents((prev) => [ev, ...prev]);
+    const onEvent = (ev: any) => {
+      setEvents((prev) => [ev, ...prev]);
+      try {
+        const payload = ev?.payload || ev;
+        if (payload?.evidence?.url && (payload?.type === 'screen_snapshot' || payload?.type?.includes('face'))) {
+          setSnapshots((prev) => [{ ts: ev.createdAt || new Date().toISOString(), url: payload.evidence.url, type: payload.type }, ...prev].slice(0, 50));
+        }
+      } catch {}
+    };
     s.on("event_broadcast", onEvent);
     s.on("webrtc-offer", async (offer: any) => {
       try {
@@ -127,6 +136,16 @@ export default function AdminSessions({ token }: { token: string }) {
                 <button className="btn danger" onClick={forceStop}>Force Stop</button>
               </div>
               <video ref={videoRef} autoPlay playsInline controls style={{ width: "100%", borderRadius: 8, border: "1px solid rgba(255,255,255,0.08)" }} />
+              <h4 style={{ marginTop: 12 }}>Evidence Snapshots</h4>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8 }}>
+                {snapshots.map((s, i) => (
+                  <div key={i} className="card" style={{ padding: 6 }}>
+                    <div className="muted" style={{ fontSize: 10 }}>{new Date(s.ts).toLocaleTimeString()} · {s.type}</div>
+                    <img src={s.url} style={{ width: '100%', borderRadius: 6 }} />
+                  </div>
+                ))}
+                {snapshots.length === 0 && <div className="muted" style={{ fontSize: 12 }}>No snapshots yet.</div>}
+              </div>
               <h4>Recent Events</h4>
               <div style={{ maxHeight: 240, overflow: "auto", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 8, padding: 8 }}>
                 {events.map((e, i) => (
@@ -140,4 +159,3 @@ export default function AdminSessions({ token }: { token: string }) {
     </div>
   );
 }
-

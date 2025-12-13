@@ -1,4 +1,5 @@
 import { ProctorEvent, SensorPlugin } from "../../core/types";
+import { presignAndUpload } from "../../utils/upload";
 
 /**
  * ScreenCaptureSensor
@@ -13,9 +14,21 @@ export class ScreenCaptureSensor implements SensorPlugin {
   private canvas?: HTMLCanvasElement;
   private ctx?: CanvasRenderingContext2D | null;
   private timer?: number;
+  private testId: string;
+  private userId: string;
+  private token: string;
+  private apiBase: string;
+  private interval: number;
+  private onPreview?: (dataUrl: string) => void;
 
-  constructor(opts: { onViolation?: (evt: ProctorEvent) => void }) {
+  constructor(opts: { onViolation?: (evt: ProctorEvent) => void; onPreview?: (dataUrl: string) => void; testId: string; userId: string; token: string; apiBaseUrl: string; snapshotIntervalMs?: number }) {
     this.onViolation = opts.onViolation;
+    this.testId = opts.testId;
+    this.userId = opts.userId;
+    this.token = opts.token;
+    this.apiBase = opts.apiBaseUrl;
+    this.interval = Math.max(5000, opts.snapshotIntervalMs ?? 30_000);
+    this.onPreview = opts.onPreview;
   }
 
   async init() {
@@ -34,17 +47,50 @@ export class ScreenCaptureSensor implements SensorPlugin {
         this.canvas = document.createElement("canvas");
         this.canvas.width = 640; this.canvas.height = 360;
         this.ctx = this.canvas.getContext("2d", { willReadFrequently: true });
+        try {
+          this.stream.getVideoTracks().forEach((t) => {
+            t.addEventListener("ended", () => {
+              this.onViolation?.({
+                type: "screen_share_stopped",
+                testId: this.testId,
+                userId: this.userId,
+                timestamp: new Date().toISOString(),
+                details: { reason: "track_ended" },
+              } as any);
+            });
+          });
+        } catch {}
       }
-      // Periodically indicate that recording is active
-      this.timer = window.setInterval(() => {
-        this.onViolation?.({
-          type: "heartbeat",
-          testId: "",
-          userId: "",
-          timestamp: new Date().toISOString(),
-          details: { screenRecording: true },
-        } as any);
-      }, 10_000);
+      // Periodically capture a frame and upload as evidence
+      this.timer = window.setInterval(async () => {
+        try {
+          if (!this.canvas || !this.ctx || !this.video) return;
+          this.ctx.drawImage(this.video, 0, 0, this.canvas.width, this.canvas.height);
+          try {
+            const dataUrl = this.canvas.toDataURL("image/jpeg", 0.6);
+            this.onPreview?.(dataUrl);
+          } catch {}
+          const blob: Blob = await new Promise((resolve) => this.canvas!.toBlob((b) => resolve(b!), "image/jpeg", 0.8));
+          const { url, key, viewUrl } = await presignAndUpload({
+            token: this.token,
+            apiBaseUrl: this.apiBase,
+            blob,
+            contentType: "image/jpeg",
+            testId: this.testId,
+            userId: this.userId,
+          });
+          this.onViolation?.({
+            type: "screen_snapshot",
+            testId: this.testId,
+            userId: this.userId,
+            timestamp: new Date().toISOString(),
+            details: { intervalMs: this.interval },
+            evidence: { type: "image/jpeg", url: viewUrl || url, key },
+          } as any);
+        } catch {
+          /* ignore periodic upload errors */
+        }
+      }, this.interval);
     } catch {
       // user may cancel; ignore
     }
@@ -56,8 +102,17 @@ export class ScreenCaptureSensor implements SensorPlugin {
 
   async destroy() {
     this.stop();
-    this.stream?.getTracks().forEach((t) => t.stop());
+    try {
+      this.stream?.getTracks().forEach((t) => t.stop());
+      // Emit stopped event for audit
+      this.onViolation?.({
+        type: "screen_share_stopped",
+        testId: this.testId,
+        userId: this.userId,
+        timestamp: new Date().toISOString(),
+        details: { reason: "destroy" },
+      } as any);
+    } catch {}
     this.stream = undefined;
   }
 }
-
