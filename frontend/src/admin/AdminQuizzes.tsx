@@ -47,7 +47,10 @@ export default function AdminQuizzes({ token, onEdit }: { token: string; onEdit:
     <div className="card">
       <div className="row" style={{ justifyContent: "space-between" }}>
         <h3 className="heading">Quizzes</h3>
-        <button className="btn secondary" onClick={load} disabled={loading}>{loading ? "Loading..." : "Refresh"}</button>
+        <div className="row" style={{ gap: 8 }}>
+          <button className="btn secondary" onClick={load} disabled={loading}>{loading ? "Loading..." : "Refresh"}</button>
+          <button className="btn" onClick={() => onEdit({ id: 0, title: "", description: "", proctorEnabled: true } as any)}>New Quiz</button>
+        </div>
       </div>
       {error && <p className="muted" style={{ color: "var(--danger)" }}>{error}</p>}
       <ul className="list" style={{ marginTop: 8 }}>

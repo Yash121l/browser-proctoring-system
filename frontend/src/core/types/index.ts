@@ -48,6 +48,7 @@ export interface ProctorConfig {
     onViolation?: string; // global path, e.g., window.onViolationHandler
     onForceSubmit?: string;
     onScreenPreview?: string; // global path for local screen preview thumbnails
+    onRecordingStatus?: string; // called with { source: 'screen'|'camera', active: boolean }
   };
   heartbeatIntervalMs?: number;
   frameCaptureIntervalMs?: number;

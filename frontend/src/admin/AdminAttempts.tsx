@@ -65,7 +65,12 @@ export default function AdminAttempts({ token, quizId, onOpenSession }: { token:
                 </td>
                 <td style={{ padding: '8px 6px' }}>{r.lastSnapshot ? <img src={r.lastSnapshot} style={{ width: 80, borderRadius: 6 }} /> : '-'}</td>
                 <td style={{ padding: '8px 6px' }}>
-                  <button className="btn" onClick={() => onOpenSession(String(r.userId))}>Open Session</button>
+                  <button className="btn" onClick={() => {
+                    try {
+                      sessionStorage.setItem('admin_target_session', JSON.stringify({ testId: String(quizId), userId: String(r.userId) }));
+                    } catch {}
+                    onOpenSession(String(r.userId));
+                  }}>Open Session</button>
                 </td>
               </tr>
             ))}
@@ -78,4 +83,3 @@ export default function AdminAttempts({ token, quizId, onOpenSession }: { token:
     </div>
   );
 }
-

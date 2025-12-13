@@ -13,7 +13,8 @@ import { adminAttemptsRouter } from "./routes/adminAttempts";
 import { userAuthRouter } from "./routes/userAuth";
 import { prisma } from "./prisma";
 import { Claims, ProctorEvent } from "./types";
-import { S3Client, HeadBucketCommand, CreateBucketCommand } from "@aws-sdk/client-s3";
+import { S3Client, HeadBucketCommand, CreateBucketCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 // ENV
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
@@ -52,7 +53,10 @@ app.use(
 );
 
 // Parsers
-app.use(express.json({ limit: "512kb" }));
+// Increase JSON limit to accommodate direct base64 uploads (manifest/chunks metadata)
+// Default 20mb; override with JSON_LIMIT_MB env var if needed.
+const JSON_LIMIT_MB = Number(process.env.JSON_LIMIT_MB || 20);
+app.use(express.json({ limit: `${JSON_LIMIT_MB}mb` }));
 
 // Rate limiters
 const publicLimiter = rateLimit({
@@ -393,6 +397,50 @@ app.get("/admin/events", requireAdmin, async (req: Request, res: Response) => {
   res.json({ events });
 });
 
+// Admin: fetch signed recording manifest and chunk URLs
+app.get("/admin/recordings/manifest", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { testId, userId } = req.query as any;
+    if (!testId || !userId) return res.status(400).json({ error: "missing testId/userId" });
+    // combined response: try both screen and camera manifests, merge by seq/ts
+    const base = `recordings/${String(testId)}/${String(userId)}`;
+    const keys = [
+      `${base}/manifest.screen.json`,
+      `${base}/manifest.camera.json`,
+      `${base}/manifest.json`, // legacy single-source manifest
+    ];
+    const s3 = new S3Client({ region: AWS_REGION });
+    let collected: any[] = [];
+    for (const k of keys) {
+      try {
+        const obj = await s3.send(new GetObjectCommand({ Bucket: S3_BUCKET, Key: k }));
+        const txt = await streamToString(obj.Body as any);
+        const manifest = JSON.parse(txt || "{}");
+        const src = k.includes('.camera.') ? 'camera' : k.includes('.screen.') ? 'screen' : undefined;
+        const list = Array.isArray(manifest?.chunks) ? manifest.chunks : [];
+        collected = collected.concat(list.map((c: any) => ({ ...c, source: c.source || src })));
+      } catch {}
+    }
+    const chunks = collected.sort((a, b) => Number(a.seq ?? a.ts) - Number(b.seq ?? b.ts));
+    // Sign each chunk key if not absolute URL
+    const signed = await Promise.all(
+      chunks.map(async (c: any) => {
+        const hasHttp = typeof c?.url === "string" && /^https?:/i.test(c.url);
+        if (hasHttp) return { ...c };
+        const ck = String(c.key || c);
+        const gurl = await getSignedUrl(s3, new GetObjectCommand({ Bucket: S3_BUCKET, Key: ck }), { expiresIn: 600 });
+        return { ...c, url: gurl, key: ck };
+      })
+    );
+    // Also compute simple markers for timeline alignment
+    const markers = signed.map((c) => ({ ts: Number(c.ts || Date.now()), source: c.source || 'screen', seq: Number(c.seq || 0) }));
+    res.json({ chunks: signed, markers });
+  } catch (e: any) {
+    console.error("manifest fetch error", e?.message || e);
+    return res.status(404).json({ error: "manifest_not_found" });
+  }
+});
+
 // Start
 server.listen(PORT, () => {
   console.log(`HTTP listening on :${PORT}`);
@@ -419,3 +467,13 @@ server.listen(PORT, () => {
     }
   }
 })();
+
+// Helpers
+async function streamToString(stream: NodeJS.ReadableStream): Promise<string> {
+  const chunks: Buffer[] = [];
+  return await new Promise((resolve, reject) => {
+    stream.on("data", (d: Buffer) => chunks.push(Buffer.isBuffer(d) ? d : Buffer.from(d)));
+    stream.on("error", reject);
+    stream.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+  });
+}

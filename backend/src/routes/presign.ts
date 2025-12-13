@@ -21,7 +21,7 @@ const s3 = new S3Client({ region: AWS_REGION });
  *  - Validates origin (strict in production)
  *  - Restricts key prefix to evidence/<...> or recordings/<...>
  *  - TTL short (default 120s)
- *  - Allows image/jpeg and video/webm
+ *  - Allows image/jpeg, video/webm and application/json (manifest)
  */
 router.post("/", async (req: Request, res: Response) => {
   try {
@@ -41,13 +41,20 @@ router.post("/", async (req: Request, res: Response) => {
     if (context.testId !== claims.testId || context.userId !== claims.sub) {
       return res.status(400).json({ error: "context does not match token" });
     }
-    const allowed = new Set(["image/jpeg", "video/webm"]);
+    const allowed = new Set(["image/jpeg", "video/webm", "application/json"]);
     if (!allowed.has(contentType)) return res.status(400).json({ error: "unsupported contentType" });
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
     const kind = context.kind || (contentType.startsWith("video/") ? "recordings" : "evidence");
-    const ext = contentType === "image/jpeg" ? "jpg" : contentType === "video/webm" ? "webm" : "bin";
-    const key = `${kind}/${context.testId}/${context.userId}/${timestamp}.${ext}`;
+    const ext = contentType === "image/jpeg" ? "jpg" : contentType === "video/webm" ? "webm" : contentType === "application/json" ? "json" : "bin";
+    const safeName = (String(context?.name || "").match(/^[a-zA-Z0-9._-]+$/) ? String(context.name) : null);
+    const suffix = [context?.sequence != null ? `s${String(context.sequence)}` : null, context?.source ? String(context.source) : null]
+      .filter(Boolean)
+      .join("-");
+    const filename = suffix ? `${timestamp}-${suffix}.${ext}` : `${timestamp}.${ext}`;
+    const key = (contentType === "application/json" && safeName)
+      ? `${kind}/${context.testId}/${context.userId}/${safeName}`
+      : `${kind}/${context.testId}/${context.userId}/${filename}`;
 
     const cmd = new PutObjectCommand({
       Bucket: S3_BUCKET,
@@ -96,13 +103,20 @@ router.post("/direct", async (req: Request, res: Response) => {
     if (context.testId !== claims.testId || context.userId !== claims.sub) {
       return res.status(400).json({ error: "context does not match token" });
     }
-    const allowed = new Set(["image/jpeg", "video/webm"]);
+    const allowed = new Set(["image/jpeg", "video/webm", "application/json"]);
     if (!allowed.has(contentType)) return res.status(400).json({ error: "unsupported contentType" });
     const bytes = Buffer.from(String(dataBase64), "base64");
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
     const kind = context.kind || (contentType.startsWith("video/") ? "recordings" : "evidence");
-    const ext = contentType === "image/jpeg" ? "jpg" : contentType === "video/webm" ? "webm" : "bin";
-    const key = `${kind}/${context.testId}/${context.userId}/${timestamp}.${ext}`;
+    const ext = contentType === "image/jpeg" ? "jpg" : contentType === "video/webm" ? "webm" : contentType === "application/json" ? "json" : "bin";
+    const safeName = (String(context?.name || "").match(/^[a-zA-Z0-9._-]+$/) ? String(context.name) : null);
+    const suffix = [context?.sequence != null ? `s${String(context.sequence)}` : null, context?.source ? String(context.source) : null]
+      .filter(Boolean)
+      .join("-");
+    const filename = suffix ? `${timestamp}-${suffix}.${ext}` : `${timestamp}.${ext}`;
+    const key = (contentType === "application/json" && safeName)
+      ? `${kind}/${context.testId}/${context.userId}/${safeName}`
+      : `${kind}/${context.testId}/${context.userId}/${filename}`;
     try {
       await s3.send(new PutObjectCommand({ Bucket: S3_BUCKET, Key: key, Body: bytes, ContentType: contentType }));
     } catch (e: any) {

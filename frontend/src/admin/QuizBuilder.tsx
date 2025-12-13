@@ -120,15 +120,38 @@ export default function QuizBuilder({ token, initialQuiz, onSaved }: { token: st
             </div>
             {q.type === "MCQ" && (
               <div style={{ marginTop: 8 }}>
-                <h5>Options</h5>
+                <div className="row" style={{ justifyContent: 'space-between' }}>
+                  <h5>Options</h5>
+                  <label className="row" style={{ gap: 6 }}>
+                    <input type="checkbox" checked={Array.isArray(q.correctAnswer)} onChange={(e) => {
+                      if (e.target.checked) {
+                        updateQuestion(i, { correctAnswer: Array.isArray(q.correctAnswer) ? q.correctAnswer : (q.correctAnswer != null ? [q.correctAnswer] : []) });
+                      } else {
+                        updateQuestion(i, { correctAnswer: Array.isArray(q.correctAnswer) ? (q.correctAnswer[0] ?? null) : q.correctAnswer ?? null });
+                      }
+                    }} /> Allow multiple answers
+                  </label>
+                </div>
                 {(q.options || []).map((opt, idx) => (
                   <div key={idx} className="row" style={{ marginTop: 6 }}>
                     <input className="input grow" value={opt} onChange={(e) => {
                       const copy = (q.options || []).slice(); copy[idx] = e.target.value; updateQuestion(i, { options: copy });
                     }} />
-                    <label className="row" style={{ gap: 6 }}>
-                      <input type="radio" name={`correct-${i}`} checked={q.correctAnswer === opt} onChange={() => updateQuestion(i, { correctAnswer: opt })} /> Correct
-                    </label>
+                    {Array.isArray(q.correctAnswer) ? (
+                      <label className="row" style={{ gap: 6 }}>
+                        <input type="checkbox" checked={Array.isArray(q.correctAnswer) && q.correctAnswer.includes(opt)} onChange={(e) => {
+                          const arr = Array.isArray(q.correctAnswer) ? q.correctAnswer.slice() : [];
+                          const j = arr.indexOf(opt);
+                          if (e.target.checked && j === -1) arr.push(opt);
+                          if (!e.target.checked && j >= 0) arr.splice(j,1);
+                          updateQuestion(i, { correctAnswer: arr });
+                        }} /> Correct
+                      </label>
+                    ) : (
+                      <label className="row" style={{ gap: 6 }}>
+                        <input type="radio" name={`correct-${i}`} checked={q.correctAnswer === opt} onChange={() => updateQuestion(i, { correctAnswer: opt })} /> Correct
+                      </label>
+                    )}
                     <button className="btn secondary" onClick={() => {
                       const copy = (q.options || []).slice(); copy.splice(idx,1); updateQuestion(i, { options: copy });
                     }}>Remove</button>

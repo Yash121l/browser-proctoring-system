@@ -4,6 +4,7 @@ import type { ProctorConfig } from "./core/types";
 import AdminSessions from "./admin/AdminSessions";
 import AdminQuizzes from "./admin/AdminQuizzes";
 import QuizBuilder from "./admin/QuizBuilder";
+import AdminAttempts from "./admin/AdminAttempts";
 import Login from "./pages/Login";
 import StudentDashboard from "./pages/StudentDashboard";
 import TakeQuiz from "./pages/TakeQuiz";
@@ -19,8 +20,9 @@ export default function App() {
   const [status, setStatus] = React.useState<string>("idle");
   const [quiz, setQuiz] = React.useState<any | null>(null);
   const [attempt, setAttempt] = React.useState<any | null>(null);
-  const [adminTab, setAdminTab] = React.useState<"sessions" | "quizzes" | "builder">("sessions");
+  const [adminTab, setAdminTab] = React.useState<"sessions" | "quizzes" | "builder" | "attempts">("sessions");
   const [builderQuiz, setBuilderQuiz] = React.useState<any | null>(null);
+  const [attemptsQuizId, setAttemptsQuizId] = React.useState<number | null>(null);
 
   React.useEffect(() => {
     // Expose sample callbacks
@@ -48,6 +50,7 @@ export default function App() {
             <button className={`btn ${adminTab === 'sessions' ? '' : 'secondary'}`} onClick={() => setAdminTab('sessions')}>Sessions</button>
             <button className={`btn ${adminTab === 'quizzes' ? '' : 'secondary'}`} onClick={() => { setAdminTab('quizzes'); setBuilderQuiz(null); }}>Quizzes</button>
             <button className={`btn ${adminTab === 'builder' ? '' : 'secondary'}`} onClick={() => { setAdminTab('builder'); setBuilderQuiz(null); }}>Quiz Builder</button>
+            <button className={`btn ${adminTab === 'attempts' ? '' : 'secondary'}`} onClick={() => { setAdminTab('attempts'); }}>Attempts</button>
           </div>
         </div>
         {adminTab === "sessions" && <AdminSessions token={token} />}
@@ -56,6 +59,17 @@ export default function App() {
         )}
         {adminTab === "builder" && (
           <QuizBuilder token={token} initialQuiz={builderQuiz || undefined} onSaved={() => setAdminTab('quizzes')} />
+        )}
+        {adminTab === "attempts" && (
+          <div className="card">
+            <div className="row" style={{ gap: 8 }}>
+              <input className="input" style={{ width: 160 }} placeholder="Quiz ID" value={attemptsQuizId ?? ''} onChange={(e) => setAttemptsQuizId(e.target.value ? Number(e.target.value) : null)} />
+            </div>
+            {attemptsQuizId != null && <AdminAttempts token={token} quizId={attemptsQuizId} onOpenSession={(userId) => {
+              setAdminTab('sessions');
+              // Optionally store selection for AdminSessions; left as future enhancement
+            }} />}
+          </div>
         )}
       </div>
     );

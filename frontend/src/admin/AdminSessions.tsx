@@ -19,10 +19,86 @@ export default function AdminSessions({ token }: { token: string }) {
   const [followLive, setFollowLive] = React.useState(true);
   const [hoverPreview, setHoverPreview] = React.useState<{ url: string; x: number } | null>(null);
   const [recordingUrl, setRecordingUrl] = React.useState<string | null>(null);
+  const [playlist, setPlaylist] = React.useState<{ url: string; ts: number; seq: number; source?: 'screen'|'camera' }[]>([]);
   const [quizIdInput, setQuizIdInput] = React.useState<string>("");
   const socketRef = React.useRef<Socket | null>(null);
   const pcRef = React.useRef<RTCPeerConnection | null>(null);
   const videoRef = React.useRef<HTMLVideoElement>(null);
+  
+  // Seamless player using Media Source Extensions
+  function ChunkPlayer({ playlist }: { playlist: { url: string; ts: number; seq: number }[] }) {
+    const vref = React.useRef<HTMLVideoElement>(null);
+    const [idx, setIdx] = React.useState(0);
+    const [appending, setAppending] = React.useState(false);
+
+    React.useEffect(() => { setIdx(0); }, [JSON.stringify(playlist.map((p) => p.url))]);
+
+    React.useEffect(() => {
+      const video = vref.current;
+      if (!video || !playlist.length || !('MediaSource' in window)) return;
+      const ms = new MediaSource();
+      video.src = URL.createObjectURL(ms);
+      let source: SourceBuffer | null = null;
+      let canceled = false;
+
+      const appendChunk = async (i: number) => {
+        if (canceled || i >= playlist.length) return;
+        setIdx(i);
+        setAppending(true);
+        const res = await fetch(playlist[i].url);
+        const buf = await res.arrayBuffer();
+        await new Promise<void>((resolve, reject) => {
+          if (!source) return reject(new Error('no source buffer'));
+          const onUpdate = () => { source?.removeEventListener('updateend', onUpdate); resolve(); };
+          source.addEventListener('updateend', onUpdate);
+          try { source.appendBuffer(buf); } catch (e) { source.removeEventListener('updateend', onUpdate); reject(e); }
+        });
+        setAppending(false);
+        appendChunk(i + 1);
+      };
+
+      ms.addEventListener('sourceopen', () => {
+        try {
+          source = ms.addSourceBuffer('video/webm; codecs="vp8,vorbis"');
+          appendChunk(0);
+        } catch {
+          // fallback to normal playback of first chunk
+          video.src = playlist[0].url;
+        }
+      });
+
+      return () => { canceled = true; try { ms.endOfStream(); } catch {} };
+    }, [playlist]);
+
+    if (!playlist.length) return <div className="muted">No chunks</div>;
+    return (
+      <div>
+        <video ref={vref} controls style={{ width: '100%', borderRadius: 8 }} />
+        <div className="row" style={{ justifyContent: 'space-between', marginTop: 6 }}>
+          <div className="muted" style={{ fontSize: 12 }}>Chunk {idx+1}/{playlist.length}</div>
+          {appending && <div className="muted" style={{ fontSize: 12 }}>Loading…</div>}
+        </div>
+      </div>
+    );
+  }
+
+  // Dual player: side-by-side screen + camera using two MSE players with filtered playlists
+  function DualPlayer({ playlist }: { playlist: { url: string; ts: number; seq: number; source?: 'screen'|'camera' }[] }) {
+    const screen = playlist.filter((c) => c.source !== 'camera');
+    const camera = playlist.filter((c) => c.source === 'camera');
+    return (
+      <div className="row" style={{ gap: 12 }}>
+        <div style={{ flex: 1 }}>
+          <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Screen</div>
+          <ChunkPlayer playlist={screen as any} />
+        </div>
+        <div style={{ flex: 1 }}>
+          <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Camera</div>
+          <ChunkPlayer playlist={camera as any} />
+        </div>
+      </div>
+    );
+  }
 
   React.useEffect(() => {
     const s = io(undefined, { auth: { token }, transports: ["websocket"], path: "/socket.io" });
@@ -83,7 +159,20 @@ export default function AdminSessions({ token }: { token: string }) {
   const refreshSessions = async () => {
     const res = await fetch(`/admin/sessions`, { headers: { Authorization: `Bearer ${token}` } });
     const data = await res.json();
-    setSessions(data.sessions || []);
+    const list: SessionInfo[] = data.sessions || [];
+    setSessions(list);
+    // Auto-join target from sessionStorage if available
+    try {
+      const t = sessionStorage.getItem('admin_target_session');
+      if (t) {
+        const tgt = JSON.parse(t) as { testId: string; userId: string };
+        const match = list.find((s) => s.testId === String(tgt.testId) && s.userId === String(tgt.userId));
+        if (match) {
+          await joinSession(match);
+          sessionStorage.removeItem('admin_target_session');
+        }
+      }
+    } catch {}
   };
 
   const joinSession = async (s: SessionInfo) => {
@@ -96,6 +185,7 @@ export default function AdminSessions({ token }: { token: string }) {
     });
     const data = await res.json();
     setEvents(data.events || []);
+    setPlaylist([]);
   };
 
   const requestView = () => {
@@ -108,6 +198,18 @@ export default function AdminSessions({ token }: { token: string }) {
     const socket = socketRef.current;
     if (!socket || !selected) return;
     socket.emit("admin_stop", { testId: selected.testId, userId: selected.userId });
+  };
+
+  const loadRecording = async () => {
+    if (!selected) return;
+    const res = await fetch(`/admin/recordings/manifest?testId=${encodeURIComponent(selected.testId)}&userId=${encodeURIComponent(selected.userId)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) { alert('No manifest yet'); return; }
+    const data = await res.json();
+    const chunks = (data.chunks || []).sort((a: any, b: any) => Number(a.seq) - Number(b.seq));
+    setPlaylist(chunks);
+    if (chunks[0]?.url) setRecordingUrl(chunks[0].url);
   };
 
   return (
@@ -152,12 +254,17 @@ export default function AdminSessions({ token }: { token: string }) {
               <video ref={videoRef} autoPlay playsInline controls style={{ width: "100%", borderRadius: 8, border: "1px solid rgba(255,255,255,0.08)" }} />
 
               {/* Recordings player (if a manifest or a latest chunk is available) */}
-              {recordingUrl && (
-                <div className="card" style={{ marginTop: 12 }}>
-                  <h4>Recording Preview</h4>
-                  <video src={recordingUrl} controls style={{ width: '100%', borderRadius: 8 }} />
+              <div className="card" style={{ marginTop: 12 }}>
+                <div className="row" style={{ justifyContent: 'space-between' }}>
+                  <h4>Recording</h4>
+                  <button className="btn secondary" onClick={loadRecording}>Load Recording</button>
                 </div>
-              )}
+                {playlist.length === 0 ? (
+                  <div className="muted" style={{ fontSize: 12 }}>No recording manifest yet.</div>
+                ) : (
+                  <DualPlayer playlist={playlist as any} />
+                )}
+              </div>
 
               <Timeline
                 start={timeline.start}

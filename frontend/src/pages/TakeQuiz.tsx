@@ -12,6 +12,8 @@ export default function TakeQuiz({ token, quiz, attempt, onSubmitted }: { token:
   });
   const [needsRecheck, setNeedsRecheck] = React.useState(false);
   const [preview, setPreview] = React.useState<string | null>(null);
+  const [showCam, setShowCam] = React.useState(false);
+  const camRef = React.useRef<HTMLVideoElement>(null);
 
   React.useEffect(() => {
     // Attach violation handler that auto-stops on critical proctoring loss
@@ -25,6 +27,14 @@ export default function TakeQuiz({ token, quiz, attempt, onSubmitted }: { token:
       if (t === 'camera_stopped' || t === 'screen_share_stopped') setNeedsRecheck(true);
     };
     (window as any).onForceSubmitHandler = () => submit();
+    (window as any).onRecordingStatus = (s: { source: 'screen'|'camera'; active: boolean }) => {
+      // simple UI indicator by toggling a CSS class on body for now
+      try {
+        const id = `rec-${s.source}`;
+        const el = document.getElementById(id);
+        if (el) el.textContent = s.active ? `${s.source.toUpperCase()} REC` : `${s.source.toUpperCase()} idle`;
+      } catch {}
+    };
   }, []);
 
   const [reinitSeq, setReinitSeq] = React.useState(0);
@@ -67,6 +77,19 @@ export default function TakeQuiz({ token, quiz, attempt, onSubmitted }: { token:
     instance.init().then(() => { if (mounted) setSdk(instance); });
     return () => { mounted = false; instance.destroy(); };
   }, [quiz, attempt, token, reinitSeq]);
+
+  // Candidate camera preview toggle
+  React.useEffect(() => {
+    if (!showCam) return;
+    let stream: MediaStream | null = null;
+    (async () => {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        if (camRef.current) camRef.current.srcObject = stream;
+      } catch {}
+    })();
+    return () => { try { stream?.getTracks().forEach((t) => t.stop()); } catch {} };
+  }, [showCam]);
 
   const onAnswer = (q: any, resp: any) => {
     setAnswers((prev) => ({ ...prev, [q.id]: resp }));
@@ -129,6 +152,8 @@ export default function TakeQuiz({ token, quiz, attempt, onSubmitted }: { token:
           <div className="row" style={{ gap: 12 }}>
             <div className="chip current">Progress {progress}%</div>
             {timeLeft != null && <div className="chip">Time {fmt(timeLeft)}</div>}
+            <div id="rec-screen" className="chip">SCREEN idle</div>
+            <div id="rec-camera" className="chip">CAMERA idle</div>
           </div>
         </div>
         <div className="toolbar">
@@ -144,6 +169,13 @@ export default function TakeQuiz({ token, quiz, attempt, onSubmitted }: { token:
           <img src={preview} style={{ width: 200, height: 'auto', display: 'block', borderRadius: 6 }} />
         </div>
       )}
+      <div style={{ position: 'fixed', right: 24, bottom: preview ? 160 : 24, background: 'rgba(0,0,0,0.6)', padding: 6, borderRadius: 8, border: '1px solid rgba(255,255,255,0.08)' }}>
+        <div className="row" style={{ gap: 8 }}>
+          <button className="btn secondary" onClick={() => setShowCam((s) => !s)}>{showCam ? 'Hide' : 'Show'} camera</button>
+          {quiz?.proctorConfig?.checks?.screenRecording && <span className="chip">REC</span>}
+        </div>
+        {showCam && <video ref={camRef} autoPlay playsInline muted style={{ width: 200, height: 'auto', display: 'block', borderRadius: 6, marginTop: 6 }} />}
+      </div>
       {/* Sticky toolbar chips */}
       <div className="card" style={{ position: 'sticky', top: 0, zIndex: 5, marginBottom: 12 }}>
         <div className="chips">
@@ -157,16 +189,16 @@ export default function TakeQuiz({ token, quiz, attempt, onSubmitted }: { token:
 
       {/* Single-question panel */}
       {qAt && (
-        <div className="card">
+        <div className="card" style={{ padding: 24 }}>
           <div className="row" style={{ justifyContent: 'space-between' }}>
             <div><strong>Question {step+1} of {total}</strong></div>
             <button className="btn secondary" onClick={() => toggleReview(qAt.id)}>{review[qAt.id] ? 'Unmark' : 'Mark for review'}</button>
           </div>
-          <div style={{ marginTop: 10, marginBottom: 8 }}>{qAt.text}</div>
+          <div style={{ marginTop: 10, marginBottom: 12, lineHeight: 1.5 }}>{qAt.text}</div>
           {qAt.type === 'MCQ' && Array.isArray(qAt.options) && (
-            <div>
+            <div style={{ display: 'grid', gap: 8 }}>
               {qAt.options.map((opt: any, idx: number) => (
-                <label key={idx} style={{ display: 'block' }}>
+                <label key={idx} style={{ display: 'block', padding: '10px 12px', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10 }}>
                   <input type="radio" name={`q-${qAt.id}`} checked={answers[qAt.id] === opt} onChange={() => onAnswer(qAt, opt)} /> {String(opt)}
                 </label>
               ))}
@@ -175,14 +207,14 @@ export default function TakeQuiz({ token, quiz, attempt, onSubmitted }: { token:
           {qAt.type === 'TRUE_FALSE' && (
             <div>
               {([true,false] as const).map((opt) => (
-                <label key={String(opt)} style={{ display: 'inline-block', marginRight: 12 }}>
+                <label key={String(opt)} style={{ display: 'inline-block', marginRight: 12, padding: '10px 12px', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10 }}>
                   <input type="radio" name={`q-${qAt.id}`} checked={answers[qAt.id] === opt} onChange={() => onAnswer(qAt, opt)} /> {String(opt)}
                 </label>
               ))}
             </div>
           )}
           {qAt.type === 'SHORT_TEXT' && (
-            <input style={{ width: 500 }} value={answers[qAt.id] ?? ''} onChange={(e) => onAnswer(qAt, e.target.value)} />
+            <input className="input" style={{ width: '100%', maxWidth: 520 }} value={answers[qAt.id] ?? ''} onChange={(e) => onAnswer(qAt, e.target.value)} />
           )}
           <div className="row" style={{ justifyContent: 'space-between', marginTop: 12 }}>
             <button className="btn secondary" onClick={() => setStep((s) => Math.max(0, s-1))}>Previous</button>

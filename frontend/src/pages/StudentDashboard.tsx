@@ -56,6 +56,11 @@ export default function StudentDashboard({ token, onStart }: { token: string; on
                   <div>
                     <strong>{q.title}</strong>
                     <div className="muted" style={{ fontSize: 12 }}>{q.description}</div>
+                    <div className="row" style={{ gap: 8 }}>
+                      {q.proctorEnabled && <span className="chip">Proctoring</span>}
+                      {q?.proctorConfig?.checks?.screenRecording && <span className="chip">Screen</span>}
+                      {q?.proctorConfig?.checks?.faceDetection && <span className="chip">Face</span>}
+                    </div>
                   </div>
                   <button className="btn" onClick={() => start(q)}>Start</button>
                 </div>

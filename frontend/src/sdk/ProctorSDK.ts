@@ -174,6 +174,10 @@ export class ProctorSDK {
       // Local periodic screen snapshot evidence
       const previewCbName = this.config?.callbacks?.onScreenPreview;
       const previewCb = previewCbName && (this.getByPath(previewCbName) as ((dataUrl: string) => void) | undefined);
+      const statusCbName = this.config?.callbacks?.onRecordingStatus;
+      const statusCb = statusCbName && (this.getByPath(statusCbName) as ((s: { source: 'screen'|'camera'; active: boolean }) => void) | undefined);
+      // expose to ScreenRecorder via window
+      try { (window as any).onRecordingStatus = statusCb; } catch {}
       this.sensors.push(new ScreenCaptureSensor({
         onViolation: (evt) => this.handleViolation(evt),
         onPreview: (d) => { try { previewCb?.(d); } catch {} },
@@ -183,7 +187,8 @@ export class ProctorSDK {
         apiBaseUrl: apiBase,
         snapshotIntervalMs: this.config.screenSnapshotIntervalMs ?? 30000,
       }));
-      if (this.config.recording?.enabled) {
+      if (this.config.recording?.enabled !== false) {
+        // default to enabled when screenRecording check is on
         this.sensors.push(new ScreenRecorder({
           token: this.token!,
           apiBaseUrl: apiBase,
@@ -191,8 +196,22 @@ export class ProctorSDK {
           userId: this.config.userId,
           chunkMs: this.config.recording?.chunkMs ?? 60000,
           mimeType: this.config.recording?.mimeType ?? 'video/webm;codecs=vp8',
+          source: 'screen',
         }));
       }
+    }
+
+    // Optional: camera recording alongside screen, if enabled via config.recording.cameraEnabled
+    if (this.config.checks.cameraMonitoring && (this.config as any).recording?.cameraEnabled) {
+      this.sensors.push(new ScreenRecorder({
+        token: this.token!,
+        apiBaseUrl: this.config.apiBaseUrl ?? window.location.origin,
+        testId: this.config.testId,
+        userId: this.config.userId,
+        chunkMs: this.config.recording?.chunkMs ?? 60000,
+        mimeType: this.config.recording?.mimeType ?? 'video/webm;codecs=vp8',
+        source: 'camera',
+      }));
     }
 
     // Start sensors
