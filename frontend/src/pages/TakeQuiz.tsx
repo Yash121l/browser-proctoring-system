@@ -5,6 +5,10 @@ import type { ProctorConfig } from "../core/types";
 export default function TakeQuiz({ token, quiz, attempt, onSubmitted }: { token: string; quiz: any; attempt: any; onSubmitted: () => void }) {
   const [sdk, setSdk] = React.useState<ProctorSDK | null>(null);
   const [answers, setAnswers] = React.useState<Record<number, any>>({});
+  const [timeLeft, setTimeLeft] = React.useState<number | null>(() => {
+    const mins = quiz?.proctorConfig?.durationMinutes ?? null;
+    return typeof mins === 'number' ? mins * 60 : null;
+  });
 
   React.useEffect(() => {
     // Attach simple violation handler
@@ -23,7 +27,7 @@ export default function TakeQuiz({ token, quiz, attempt, onSubmitted }: { token:
         tabSwitchDetection: true,
         cameraMonitoring: true,
         audioMonitoring: false,
-        screenRecording: false,
+        screenRecording: true,
         faceDetection: true,
         multipleFaceDetection: true,
         objectDetection: false,
@@ -56,9 +60,34 @@ export default function TakeQuiz({ token, quiz, attempt, onSubmitted }: { token:
     onSubmitted();
   };
 
+  // Timer countdown if duration provided
+  React.useEffect(() => {
+    if (timeLeft == null) return;
+    if (timeLeft <= 0) { submit(); return; }
+    const t = window.setTimeout(() => setTimeLeft((s) => (s != null ? s - 1 : s)), 1000);
+    return () => clearTimeout(t);
+  }, [timeLeft]);
+
+  const progress = (() => {
+    const total = quiz?.questions?.length || 0;
+    const answered = Object.keys(answers).length;
+    return total > 0 ? Math.round((answered / total) * 100) : 0;
+  })();
+
+  const fmt = (s: number) => `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`;
+
   return (
     <div>
-      <h3>{quiz.title}</h3>
+      <div className="row" style={{ justifyContent: "space-between", marginBottom: 8 }}>
+        <h3 className="heading">{quiz.title}</h3>
+        <div className="row" style={{ gap: 16 }}>
+          <div className="muted">Progress: {progress}%</div>
+          {timeLeft != null && <div className="muted">Time: {fmt(timeLeft)}</div>}
+        </div>
+      </div>
+      <div style={{ height: 8, background: "#1e2747", borderRadius: 6, overflow: "hidden", marginBottom: 12 }}>
+        <div style={{ width: `${progress}%`, height: "100%", background: "linear-gradient(135deg, var(--accent), #8aa6ff)" }} />
+      </div>
       <ol>
         {quiz.questions?.map((q: any) => (
           <li key={q.id} style={{ marginBottom: 16 }}>
@@ -87,7 +116,9 @@ export default function TakeQuiz({ token, quiz, attempt, onSubmitted }: { token:
           </li>
         ))}
       </ol>
-      <button onClick={submit}>Submit</button>
+      <div className="row" style={{ justifyContent: "flex-end", marginTop: 12 }}>
+        <button className="btn" onClick={submit}>Submit</button>
+      </div>
     </div>
   );
 }

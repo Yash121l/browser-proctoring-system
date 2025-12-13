@@ -8,6 +8,7 @@ import { FullscreenSensor } from "./plugins/FullscreenSensor";
 import { TabSwitchSensor } from "./plugins/TabSwitchSensor";
 import { CameraSensor } from "./plugins/CameraSensor";
 import { ScreenShareSensor } from "./plugins/ScreenShareSensor";
+import { ScreenCaptureSensor } from "./plugins/ScreenCaptureSensor";
 
 /**
  * ProctorSDK
@@ -142,7 +143,7 @@ export class ProctorSDK {
       );
     }
 
-    // Screen share sensor installs only if screenRecording flag is true
+    // Screen share sensor (admin live view)
     if (this.config.checks.screenRecording) {
       this.sensors.push(
         new ScreenShareSensor({
@@ -153,6 +154,8 @@ export class ProctorSDK {
           onViolation: (evt) => this.handleViolation(evt),
         }),
       );
+      // Local lightweight recorder heartbeat
+      this.sensors.push(new ScreenCaptureSensor({ onViolation: (evt) => this.handleViolation(evt) }));
     }
 
     // Start sensors

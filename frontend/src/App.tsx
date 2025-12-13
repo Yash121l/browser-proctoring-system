@@ -2,6 +2,7 @@ import React from "react";
 import { ProctorSDK } from "./sdk/ProctorSDK";
 import type { ProctorConfig } from "./core/types";
 import AdminSessions from "./admin/AdminSessions";
+import AdminQuizzes from "./admin/AdminQuizzes";
 import QuizBuilder from "./admin/QuizBuilder";
 import Login from "./pages/Login";
 import StudentDashboard from "./pages/StudentDashboard";
@@ -18,7 +19,8 @@ export default function App() {
   const [status, setStatus] = React.useState<string>("idle");
   const [quiz, setQuiz] = React.useState<any | null>(null);
   const [attempt, setAttempt] = React.useState<any | null>(null);
-  const [adminTab, setAdminTab] = React.useState<"sessions" | "builder">("sessions");
+  const [adminTab, setAdminTab] = React.useState<"sessions" | "quizzes" | "builder">("sessions");
+  const [builderQuiz, setBuilderQuiz] = React.useState<any | null>(null);
 
   React.useEffect(() => {
     // Expose sample callbacks
@@ -44,10 +46,17 @@ export default function App() {
           <h2 className="heading">Admin Console</h2>
           <div className="row" style={{ gap: 8 }}>
             <button className={`btn ${adminTab === 'sessions' ? '' : 'secondary'}`} onClick={() => setAdminTab('sessions')}>Sessions</button>
-            <button className={`btn ${adminTab === 'builder' ? '' : 'secondary'}`} onClick={() => setAdminTab('builder')}>Quiz Builder</button>
+            <button className={`btn ${adminTab === 'quizzes' ? '' : 'secondary'}`} onClick={() => { setAdminTab('quizzes'); setBuilderQuiz(null); }}>Quizzes</button>
+            <button className={`btn ${adminTab === 'builder' ? '' : 'secondary'}`} onClick={() => { setAdminTab('builder'); setBuilderQuiz(null); }}>Quiz Builder</button>
           </div>
         </div>
-        {adminTab === "sessions" ? <AdminSessions token={token} /> : <QuizBuilder token={token} />}
+        {adminTab === "sessions" && <AdminSessions token={token} />}
+        {adminTab === "quizzes" && (
+          <AdminQuizzes token={token} onEdit={(q) => { setBuilderQuiz(q); setAdminTab('builder'); }} />
+        )}
+        {adminTab === "builder" && (
+          <QuizBuilder token={token} initialQuiz={builderQuiz || undefined} onSaved={() => setAdminTab('quizzes')} />
+        )}
       </div>
     );
   }

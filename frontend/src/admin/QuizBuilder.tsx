@@ -8,18 +8,26 @@ type Question = {
   points?: number;
 };
 
-export default function QuizBuilder({ token }: { token: string }) {
-  const [title, setTitle] = React.useState("");
-  const [description, setDescription] = React.useState("");
-  const [proctorEnabled, setProctorEnabled] = React.useState(true);
-  const [proctorConfig, setProctorConfig] = React.useState<string>(JSON.stringify({
+export default function QuizBuilder({ token, initialQuiz, onSaved }: { token: string; initialQuiz?: any; onSaved?: () => void }) {
+  const [title, setTitle] = React.useState(initialQuiz?.title || "");
+  const [description, setDescription] = React.useState(initialQuiz?.description || "");
+  const [proctorEnabled, setProctorEnabled] = React.useState(Boolean(initialQuiz?.proctorEnabled ?? true));
+  const [proctorConfig, setProctorConfig] = React.useState<string>(JSON.stringify(initialQuiz?.proctorConfig ?? {
     checks: { forceFullScreen: true, tabSwitchDetection: true, cameraMonitoring: true, faceDetection: true, multipleFaceDetection: true, objectDetection: false, audioMonitoring: false, screenRecording: false },
     thresholds: { maxTabSwitches: 3, noiseThreshold: 0.2, gazeToleranceSeconds: 5 },
+    durationMinutes: 30,
     heartbeatIntervalMs: 5000, frameCaptureIntervalMs: 200
   }, null, 2));
-  const [questions, setQuestions] = React.useState<Question[]>([]);
+  const [questions, setQuestions] = React.useState<Question[]>(() => (initialQuiz?.questions || []).map((q: any) => ({
+    type: q.type,
+    text: q.text,
+    options: q.options || undefined,
+    correctAnswer: q.correctAnswer ?? undefined,
+    points: q.points ?? 1,
+  })));
   const [saving, setSaving] = React.useState(false);
   const [message, setMessage] = React.useState<string>("");
+  const isEditing = Boolean(initialQuiz?.id);
 
   const addQuestion = (type: Question["type"]) => {
     setQuestions((prev) => [...prev, { type, text: "", options: type === "MCQ" ? ["Option 1", "Option 2"] : undefined, correctAnswer: type === "TRUE_FALSE" ? true : undefined, points: 1 }]);
@@ -39,10 +47,13 @@ export default function QuizBuilder({ token }: { token: string }) {
         proctorConfig: JSON.parse(proctorConfig),
         questions: questions.map((q) => ({ type: q.type, text: q.text, options: q.options, correctAnswer: q.correctAnswer, points: q.points }))
       };
-      const res = await fetch("/api/quizzes", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
+      const url = isEditing ? `/api/quizzes/${initialQuiz.id}` : "/api/quizzes";
+      const method = isEditing ? "PUT" : "POST";
+      const res = await fetch(url, { method, headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
       if (!res.ok) throw new Error(`Save failed: ${res.status}`);
       setMessage("Quiz saved successfully.");
-      setTitle(""); setDescription(""); setQuestions([]);
+      if (!isEditing) { setTitle(""); setDescription(""); setQuestions([]); }
+      onSaved?.();
     } catch (e: any) {
       setMessage(e?.message || "Save failed");
     } finally {
@@ -52,7 +63,7 @@ export default function QuizBuilder({ token }: { token: string }) {
 
   return (
     <div className="card">
-      <h3 className="heading">Quiz Builder</h3>
+      <h3 className="heading">{isEditing ? "Edit Quiz" : "Quiz Builder"}</h3>
       <div className="row" style={{ gap: 20, marginTop: 12 }}>
         <input className="input grow" placeholder="Quiz title" value={title} onChange={(e) => setTitle(e.target.value)} />
         <label className="row" style={{ gap: 8 }}>
@@ -122,10 +133,9 @@ export default function QuizBuilder({ token }: { token: string }) {
       </div>
 
       <div className="row" style={{ marginTop: 12, justifyContent: "flex-end" }}>
-        <button className="btn" disabled={saving} onClick={save}>{saving ? "Saving..." : "Save Quiz"}</button>
+        <button className="btn" disabled={saving} onClick={save}>{saving ? (isEditing ? "Updating..." : "Saving...") : (isEditing ? "Update Quiz" : "Save Quiz")}</button>
       </div>
       {message && <p className="muted" style={{ marginTop: 8 }}>{message}</p>}
     </div>
   );
 }
-
