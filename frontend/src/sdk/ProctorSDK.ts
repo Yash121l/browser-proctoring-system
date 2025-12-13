@@ -9,6 +9,7 @@ import { TabSwitchSensor } from "./plugins/TabSwitchSensor";
 import { CameraSensor } from "./plugins/CameraSensor";
 import { ScreenShareSensor } from "./plugins/ScreenShareSensor";
 import { ScreenCaptureSensor } from "./plugins/ScreenCaptureSensor";
+import { ScreenRecorder } from "./plugins/ScreenRecorder";
 
 /**
  * ProctorSDK
@@ -182,6 +183,16 @@ export class ProctorSDK {
         apiBaseUrl: apiBase,
         snapshotIntervalMs: this.config.screenSnapshotIntervalMs ?? 30000,
       }));
+      if (this.config.recording?.enabled) {
+        this.sensors.push(new ScreenRecorder({
+          token: this.token!,
+          apiBaseUrl: apiBase,
+          testId: this.config.testId,
+          userId: this.config.userId,
+          chunkMs: this.config.recording?.chunkMs ?? 60000,
+          mimeType: this.config.recording?.mimeType ?? 'video/webm;codecs=vp8',
+        }));
+      }
     }
 
     // Start sensors

@@ -51,6 +51,11 @@ export interface ProctorConfig {
   heartbeatIntervalMs?: number;
   frameCaptureIntervalMs?: number;
   screenSnapshotIntervalMs?: number;
+  recording?: {
+    enabled: boolean;
+    chunkMs?: number; // default 60000
+    mimeType?: string; // default 'video/webm;codecs=vp8'
+  };
 
   // Optional endpoints; default to location.origin
   apiBaseUrl?: string;
