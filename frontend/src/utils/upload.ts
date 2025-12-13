@@ -13,8 +13,9 @@ export async function presignAndUpload(opts: {
   contentType: string;
   testId: string;
   userId: string;
+  contextExtras?: Record<string, any>;
 }): Promise<{ url: string; key: string; viewUrl?: string }> {
-  const { token, apiBaseUrl, blob, contentType, testId, userId } = opts;
+  const { token, apiBaseUrl, blob, contentType, testId, userId, contextExtras } = opts;
   const res = await fetch(`${apiBaseUrl}/presign`, {
     method: "POST",
     headers: {
@@ -24,7 +25,7 @@ export async function presignAndUpload(opts: {
     credentials: "include",
     body: JSON.stringify({
       contentType,
-      context: { testId, userId, kind: "evidence" },
+      context: { testId, userId, kind: contentType.startsWith('video/') ? 'recordings' : 'evidence', ...(contextExtras || {}) },
     }),
   });
   if (!res.ok) throw new Error(`presign failed: ${res.status}`);
@@ -52,8 +53,9 @@ export async function uploadDirect(opts: {
   contentType: string;
   testId: string;
   userId: string;
+  contextExtras?: Record<string, any>;
 }): Promise<{ url: string; key: string }> {
-  const { token, apiBaseUrl, blob, contentType, testId, userId } = opts;
+  const { token, apiBaseUrl, blob, contentType, testId, userId, contextExtras } = opts;
   const buf = await blobToBase64(blob);
   const res = await fetch(`${apiBaseUrl}/presign/direct`, {
     method: "POST",
@@ -62,7 +64,7 @@ export async function uploadDirect(opts: {
       Authorization: `Bearer ${token}`,
     },
     credentials: "include",
-    body: JSON.stringify({ contentType, context: { testId, userId }, dataBase64: buf }),
+    body: JSON.stringify({ contentType, context: { testId, userId, kind: contentType.startsWith('video/') ? 'recordings' : 'evidence', ...(contextExtras || {}) }, dataBase64: buf }),
   });
   if (!res.ok) throw new Error(`direct upload failed: ${res.status}`);
   return (await res.json()) as { url: string; key: string };

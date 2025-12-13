@@ -10,7 +10,8 @@ export type ProctorEventType =
   | "admin_forced_stop"
   | "screen_snapshot"
   | "camera_stopped"
-  | "screen_share_stopped";
+  | "screen_share_stopped"
+  | "recording_chunk";
 
 export interface ProctorEvent {
   testId: string;

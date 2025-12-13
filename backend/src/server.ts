@@ -4,6 +4,7 @@ import http from "http";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
+import 'dotenv/config';
 import { Server as IOServer } from "socket.io";
 import jwt from "jsonwebtoken";
 import { router as presignRouter } from "./routes/presign";
@@ -345,13 +346,13 @@ function canonicalize(obj: any, omitKeys: string[] = []): string {
   const replacer = (_: string, value: any) =>
     value && typeof value === "object" && !Array.isArray(value)
       ? Object.keys(value)
-          .sort()
-          .reduce((acc, k) => {
-            if (omitKeys.includes(k)) return acc;
-            const v = value[k];
-            if (v !== undefined) acc[k] = v;
-            return acc;
-          }, {} as any)
+        .sort()
+        .reduce((acc, k) => {
+          if (omitKeys.includes(k)) return acc;
+          const v = value[k];
+          if (v !== undefined) acc[k] = v;
+          return acc;
+        }, {} as any)
       : value;
   return JSON.stringify(obj, replacer);
 }

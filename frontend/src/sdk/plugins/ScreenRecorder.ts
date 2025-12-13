@@ -49,6 +49,7 @@ export class ScreenRecorder implements SensorPlugin {
         contentType: 'video/webm',
         testId: this.opts.testId,
         userId: this.opts.userId,
+        contextExtras: { sequence: Date.now() },
       });
     } catch {
       try {
@@ -59,6 +60,7 @@ export class ScreenRecorder implements SensorPlugin {
           contentType: 'video/webm',
           testId: this.opts.testId,
           userId: this.opts.userId,
+          contextExtras: { sequence: Date.now() },
         });
       } catch {}
     }
@@ -72,4 +74,3 @@ export class ScreenRecorder implements SensorPlugin {
 
   async destroy() { this.stop(); }
 }
-

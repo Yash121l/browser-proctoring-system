@@ -18,6 +18,8 @@ export default function AdminSessions({ token }: { token: string }) {
   const [cursor, setCursor] = React.useState<number>(Date.now());
   const [followLive, setFollowLive] = React.useState(true);
   const [hoverPreview, setHoverPreview] = React.useState<{ url: string; x: number } | null>(null);
+  const [recordingUrl, setRecordingUrl] = React.useState<string | null>(null);
+  const [quizIdInput, setQuizIdInput] = React.useState<string>("");
   const socketRef = React.useRef<Socket | null>(null);
   const pcRef = React.useRef<RTCPeerConnection | null>(null);
   const videoRef = React.useRef<HTMLVideoElement>(null);
@@ -137,11 +139,25 @@ export default function AdminSessions({ token }: { token: string }) {
             <p className="muted">Select a session to view.</p>
           ) : (
             <div>
-              <div className="row" style={{ marginBottom: 8 }}>
-                <button className="btn" onClick={requestView}>Request Screen</button>
-                <button className="btn danger" onClick={forceStop}>Force Stop</button>
+              <div className="row" style={{ marginBottom: 8, justifyContent: 'space-between' }}>
+                <div className="row" style={{ gap: 8 }}>
+                  <button className="btn" onClick={requestView}>Request Screen</button>
+                  <button className="btn danger" onClick={forceStop}>Force Stop</button>
+                </div>
+                <div className="row" style={{ gap: 6 }}>
+                  <input className="input" style={{ width: 100 }} placeholder="Quiz ID" value={quizIdInput} onChange={(e) => setQuizIdInput(e.target.value)} />
+                  <a className="btn secondary" href={quizIdInput ? `/admin/quiz/${encodeURIComponent(quizIdInput)}/attempts` : undefined} onClick={(e) => e.preventDefault()}>View Attempts API</a>
+                </div>
               </div>
               <video ref={videoRef} autoPlay playsInline controls style={{ width: "100%", borderRadius: 8, border: "1px solid rgba(255,255,255,0.08)" }} />
+
+              {/* Recordings player (if a manifest or a latest chunk is available) */}
+              {recordingUrl && (
+                <div className="card" style={{ marginTop: 12 }}>
+                  <h4>Recording Preview</h4>
+                  <video src={recordingUrl} controls style={{ width: '100%', borderRadius: 8 }} />
+                </div>
+              )}
 
               <Timeline
                 start={timeline.start}
