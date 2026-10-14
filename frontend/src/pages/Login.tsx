@@ -1,4 +1,5 @@
 import React from "react";
+import { identifyUser, track } from "../analytics";
 
 export default function Login({ onLogin }: { onLogin: (t: string, role: "student" | "admin") => void }) {
   const [mode, setMode] = React.useState<"login" | "signup">("login");
@@ -10,12 +11,16 @@ export default function Login({ onLogin }: { onLogin: (t: string, role: "student
     if (mode === "signup") {
       const res = await fetch("/auth/user/register", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password, role }) });
       if (!res.ok) return alert("signup failed");
-      const { token } = await res.json();
+      const { token, user } = await res.json();
+      identifyUser(user);
+      track("user_signed_up", { role: user?.role ?? role });
       onLogin(token, role);
     } else {
       const res = await fetch("/auth/user/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password }) });
       if (!res.ok) return alert("login failed");
       const { token, user } = await res.json();
+      identifyUser(user);
+      track("user_logged_in", { role: user?.role });
       onLogin(token, user.role === "admin" ? "admin" : "student");
     }
   };

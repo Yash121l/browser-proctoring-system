@@ -2,6 +2,7 @@ import React from "react";
 import { ProctorSDK } from "../sdk/ProctorSDK";
 import type { ProctorConfig } from "../core/types";
 import PreflightChecks from "./PreflightChecks";
+import { pauseReplay, track } from "../analytics";
 
 export default function TakeQuiz({ token, quiz, attempt, onSubmitted }: { token: string; quiz: any; attempt: any; onSubmitted: () => void }) {
   const [sdk, setSdk] = React.useState<ProctorSDK | null>(null);
@@ -15,18 +16,23 @@ export default function TakeQuiz({ token, quiz, attempt, onSubmitted }: { token:
   const [showCam, setShowCam] = React.useState(false);
   const camRef = React.useRef<HTMLVideoElement>(null);
 
+  // The proctoring SDK owns the camera and screen for the whole attempt; keep
+  // PostHog replay off until the attempt ends.
+  React.useEffect(() => pauseReplay(), []);
+
   React.useEffect(() => {
     // Attach violation handler that auto-stops on critical proctoring loss
     (window as any).onViolationHandler = (evt: any) => {
       console.log("Violation:", evt);
       const t = evt?.type as string;
+      if (t) track("proctor_violation_detected", { quiz_id: String(quiz?.id), violation_type: t });
       // Fullscreen exit or device stop -> pause and re-check
       if (t === 'fullscreen_exit') setNeedsRecheck(true);
       // Admin forced stop -> submit immediately
-      if (t === 'admin_forced_stop') submit();
+      if (t === 'admin_forced_stop') submit("forced");
       if (t === 'camera_stopped' || t === 'screen_share_stopped') setNeedsRecheck(true);
     };
-    (window as any).onForceSubmitHandler = () => submit();
+    (window as any).onForceSubmitHandler = () => submit("forced");
     (window as any).onRecordingStatus = (s: { source: 'screen'|'camera'; active: boolean }) => {
       // simple UI indicator by toggling a CSS class on body for now
       try {
@@ -110,11 +116,17 @@ export default function TakeQuiz({ token, quiz, attempt, onSubmitted }: { token:
   const qAt = quiz?.questions?.[step];
   const toggleReview = (qid: number) => setReview((r) => ({ ...r, [qid]: !r[qid] }));
 
-  const submit = async () => {
+  const submit = async (reason: "manual" | "timeout" | "forced" = "manual") => {
     await fetch(`/api/attempts/${attempt.id}/submit`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({ answers }),
+    });
+    track("quiz_submitted", {
+      quiz_id: String(quiz?.id),
+      question_count: quiz?.questions?.length ?? 0,
+      answered_count: Object.keys(answers).length,
+      reason,
     });
     await sdk?.destroy();
     setSdk(null);
@@ -124,7 +136,7 @@ export default function TakeQuiz({ token, quiz, attempt, onSubmitted }: { token:
   // Timer countdown if duration provided
   React.useEffect(() => {
     if (timeLeft == null) return;
-    if (timeLeft <= 0) { submit(); return; }
+    if (timeLeft <= 0) { submit("timeout"); return; }
     const t = window.setTimeout(() => setTimeLeft((s) => (s != null ? s - 1 : s)), 1000);
     return () => clearTimeout(t);
   }, [timeLeft]);
@@ -241,7 +253,7 @@ export default function TakeQuiz({ token, quiz, attempt, onSubmitted }: { token:
             if (idx >= 0) setStep(idx);
           }}>Marked for review</button>
         </div>
-        <button className="btn" onClick={submit}>Submit</button>
+        <button className="btn" onClick={() => submit()}>Submit</button>
       </div>
     </div>
   );

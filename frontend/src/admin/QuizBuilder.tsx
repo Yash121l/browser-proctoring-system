@@ -1,4 +1,5 @@
 import React from "react";
+import { track } from "../analytics";
 
 type Question = {
   type: "MCQ" | "TRUE_FALSE" | "SHORT_TEXT";
@@ -71,6 +72,7 @@ export default function QuizBuilder({ token, initialQuiz, onSaved }: { token: st
       const method = isEditing ? "PUT" : "POST";
       const res = await fetch(url, { method, headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
       if (!res.ok) throw new Error(`Save failed: ${res.status}`);
+      track("quiz_saved", { is_new: !isEditing, question_count: body.questions.length, proctored: !!proctorEnabled });
       setMessage("Quiz saved successfully.");
       if (!isEditing) { setTitle(""); setDescription(""); setQuestions([]); }
       onSaved?.();

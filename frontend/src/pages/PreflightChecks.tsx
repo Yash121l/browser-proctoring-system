@@ -1,4 +1,5 @@
 import React from "react";
+import { pauseReplay, track } from "../analytics";
 
 type Props = {
   onReady: (result: { cam: boolean; mic: boolean; screen: boolean; fullscreen: boolean }) => void;
@@ -10,6 +11,8 @@ export default function PreflightChecks({ onReady, require }: Props) {
   const [screenOk, setScreenOk] = React.useState(false);
   const [fsOk, setFsOk] = React.useState(document.fullscreenElement != null);
   const [checking, setChecking] = React.useState(false);
+  // Camera and screen-share permission prompts happen here; keep replay off.
+  React.useEffect(() => pauseReplay(), []);
   const needs = {
     camera: !!require.camera,
     screen: !!require.screen,
@@ -95,7 +98,10 @@ export default function PreflightChecks({ onReady, require }: Props) {
         )}
       </ul>
       <div className="row" style={{ justifyContent: "flex-end", marginTop: 12 }}>
-        <button className="btn" disabled={!allOk} onClick={() => onReady({ cam: camOk, mic: false, screen: screenOk, fullscreen: fsOk })}>Continue</button>
+        <button className="btn" disabled={!allOk} onClick={() => {
+          track("preflight_checks_passed", { camera: camOk, screen: screenOk, fullscreen: fsOk });
+          onReady({ cam: camOk, mic: false, screen: screenOk, fullscreen: fsOk });
+        }}>Continue</button>
       </div>
     </div></div>
   );

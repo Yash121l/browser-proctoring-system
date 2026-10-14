@@ -1,5 +1,6 @@
 import React from "react";
 import PreflightChecks from "./PreflightChecks";
+import { track } from "../analytics";
 
 export default function StudentDashboard({ token, onStart }: { token: string; onStart: (quiz: any, attempt: any) => void }) {
   const [quizzes, setQuizzes] = React.useState<any[]>([]);
@@ -22,6 +23,7 @@ export default function StudentDashboard({ token, onStart }: { token: string; on
       const res = await fetch(`/api/quizzes/${q.id}/start`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
       const data = await res.json();
       sessionStorage.setItem("candidate_ws_token", data.wsToken);
+      track("quiz_attempt_started", { quiz_id: String(q.id), proctored: false, question_count: q.questions?.length ?? 0 });
       onStart(q, data.attempt);
     }
   };
@@ -31,6 +33,7 @@ export default function StudentDashboard({ token, onStart }: { token: string; on
     const res = await fetch(`/api/quizzes/${selected.id}/start`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
     const data = await res.json();
     sessionStorage.setItem("candidate_ws_token", data.wsToken);
+    track("quiz_attempt_started", { quiz_id: String(selected.id), proctored: true, question_count: selected.questions?.length ?? 0 });
     setShowChecks(false);
     onStart(selected, data.attempt);
   };
